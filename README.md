@@ -9,10 +9,10 @@ För att skapa din egen version av detta projekt, följ dessa steg:
 
 1. Klona eller ladda ner detta repository till din dator
 2. Öppna en terminal och navigera till projektmappen
-3. Initiera git repository och pusha till ditt eget GitHub-konto:
+3. Initiera ett git repository och pusha till ditt eget GitHub-konto:
 
 ```bash
-cd "E:\Ai program\matplanerare"
+cd /sökväg/till/matplanerare
 git init
 git add .
 git commit -m "Initial commit"
@@ -21,4 +21,4 @@ git remote add origin https://github.com/DITT-ANVÄNDARNAMN/matplanerare.git
 git push -u origin main
 ```
 
-**Obs:** Byt ut `DITT-ANVÄNDARNAMN` med ditt faktiska GitHub-användarnamn och `E:\Ai program\matplanerare` med sökvägen till din projektmapp.
+**Obs:** Byt ut `DITT-ANVÄNDARNAMN` med ditt faktiska GitHub-användarnamn och `/sökväg/till/matplanerare` med sökvägen till din projektmapp.
