@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block title %}Måltidsplan - Matplanerare{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row mb-4">
+        <div class="col">
+            <h2>
+                <i class="bi bi-calendar-week me-2"></i>Måltidsplanering
+            </h2>
+            <p class="text-muted">
+                Välj en inköpslista för att se måltidsförslag baserat på dina inköp.
+            </p>
+        </div>
+    </div>
+
+    {% if lists %}
+    <div class="row">
+        {% for list in lists %}
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="bi bi-cart3 me-2 text-primary"></i>{{ list.name }}
+                    </h5>
+                    <p class="text-muted mb-2">
+                        <i class="bi bi-calendar me-1"></i>{{ list.days }} dag{{ 'ar' if list.days > 1 else '' }}
+                        {% if list.store %}
+                        · <span class="badge store-{{ list.store|lower|replace('ö','o') }}">{{ list.store }}</span>
+                        {% endif %}
+                    </p>
+                    <p class="mb-3">
+                        <span class="badge bg-secondary">{{ list.items|length }} produkter</span>
+                        {% if list.total_cost %}
+                        <span class="badge bg-success">{{ "%.0f"|format(list.total_cost) }} kr</span>
+                        {% endif %}
+                    </p>
+                    
+                    <!-- Visa några produktkategorier -->
+                    <div class="mb-3">
+                        {% set categories = [] %}
+                        {% for item in list.items %}
+                            {% if item.product and item.product.category and item.product.category not in categories %}
+                                {% set _ = categories.append(item.product.category) %}
+                            {% endif %}
+                        {% endfor %}
+                        {% for cat in categories[:5] %}
+                        <span class="badge bg-light text-dark me-1">{{ cat }}</span>
+                        {% endfor %}
+                        {% if categories|length > 5 %}
+                        <span class="badge bg-light text-muted">+{{ categories|length - 5 }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="card-footer bg-transparent">
+                    <a href="{{ url_for('meal_plan_view', list_id=list.id) }}" class="btn btn-primary w-100">
+                        <i class="bi bi-calendar-check me-2"></i>Visa måltidsplan
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="card">
+        <div class="card-body text-center py-5">
+            <i class="bi bi-inbox display-1 text-muted mb-3"></i>
+            <h4>Inga inköpslistor ännu</h4>
+            <p class="text-muted mb-4">
+                Skapa en inköpslista först för att kunna planera dina måltider.
+            </p>
+            <div class="d-flex justify-content-center gap-3">
+                <a href="/generate" class="btn btn-primary">
+                    <i class="bi bi-magic me-2"></i>Generera automatiskt
+                </a>
+                <a href="/shopping-list" class="btn btn-outline-primary">
+                    <i class="bi bi-plus-circle me-2"></i>Skapa manuellt
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Info om måltidsplanering -->
+    <div class="card mt-4 bg-light border-0">
+        <div class="card-body">
+            <h5><i class="bi bi-info-circle text-primary me-2"></i>Hur fungerar måltidsplaneringen?</h5>
+            <div class="row mt-3">
+                <div class="col-md-4 mb-3">
+                    <div class="d-flex align-items-start">
+                        <span class="badge bg-primary rounded-circle me-2" style="width: 24px; height: 24px; line-height: 18px;">1</span>
+                        <div>
+                            <strong>Välj antal måltider</strong>
+                            <p class="small text-muted mb-0">3, 4 eller 5 måltider per dag</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="d-flex align-items-start">
+                        <span class="badge bg-primary rounded-circle me-2" style="width: 24px; height: 24px; line-height: 18px;">2</span>
+                        <div>
+                            <strong>Se förslag per dag</strong>
+                            <p class="small text-muted mb-0">Produkter fördelas smart mellan måltider</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="d-flex align-items-start">
+                        <span class="badge bg-primary rounded-circle me-2" style="width: 24px; height: 24px; line-height: 18px;">3</span>
+                        <div>
+                            <strong>Följ näringsmålen</strong>
+                            <p class="small text-muted mb-0">Se hur väl varje dag uppfyller din plan</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

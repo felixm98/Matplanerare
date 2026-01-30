@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+
+{% block title %}Inköpslista - Matplanerare{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row">
+        <div class="col-lg-4 mb-4">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-plus-circle me-2"></i>Skapa ny lista
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <form id="createListForm">
+                        <div class="mb-3">
+                            <label class="form-label">Namn</label>
+                            <input type="text" class="form-control" name="name" value="Min inköpslista">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Välj butik</label>
+                            <select class="form-select" name="store">
+                                <option value="">Alla butiker</option>
+                                {% for store in stores %}
+                                <option value="{{ store }}">{{ store }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Antal dagar</label>
+                            <input type="number" class="form-control" name="days" value="7" min="1" max="30">
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="bi bi-plus-lg me-2"></i>Skapa lista
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="bi bi-collection me-2"></i>Mina listor
+                    </h6>
+                </div>
+                <div class="list-group list-group-flush" id="listsList">
+                    {% for list in lists %}
+                    <a href="#" class="list-group-item list-group-item-action" onclick="loadList({{ list.id }})">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <strong>{{ list.name }}</strong>
+                                <br>
+                                <small class="text-muted">
+                                    {{ list.items|length }} varor
+                                    {% if list.store %} · {{ list.store }}{% endif %}
+                                </small>
+                            </div>
+                            <div>
+                                {% if list.total_cost %}
+                                <span class="badge bg-success">{{ "%.2f"|format(list.total_cost) }} kr</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </a>
+                    {% else %}
+                    <div class="list-group-item text-center text-muted">
+                        <i class="bi bi-inbox me-2"></i>Inga listor ännu
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0" id="currentListName">
+                        <i class="bi bi-cart3 me-2"></i>Välj en lista
+                    </h5>
+                    <div id="listActions" style="display: none;">
+                        <a href="#" id="shopViewBtn" class="btn btn-sm btn-success me-2" title="Öppna handla-vy">
+                            <i class="bi bi-phone"></i> Handla
+                        </a>
+                        <a href="#" id="mealPlanBtn" class="btn btn-sm btn-warning me-2" title="Visa måltidsplan">
+                            <i class="bi bi-calendar-week"></i> Måltider
+                        </a>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteCurrentList()">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body" id="listContent">
+                    <div class="text-center py-5 text-muted">
+                        <i class="bi bi-arrow-left me-2"></i>
+                        Välj en lista från menyn eller skapa en ny
+                    </div>
+                </div>
+                <div class="card-footer" id="listFooter" style="display: none;">
+                    <div class="row align-items-center">
+                        <div class="col-md-6">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong><i class="bi bi-cash-stack me-2"></i>Total kostnad:</strong>
+                                </div>
+                                <div class="h3 mb-0 text-success fw-bold" id="totalCost">0 kr</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 text-end">
+                            <small class="text-muted" id="itemCount">0 varor</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentListId = null;
+
+document.getElementById('createListForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const formData = new FormData(e.target);
+    const data = Object.fromEntries(formData);
+    data.days = parseInt(data.days);
+    
+    const response = await fetch('/api/shopping-lists', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    });
+    
+    if (response.ok) {
+        location.reload();
+    }
+});
+
+async function loadList(id) {
+    currentListId = id;
+    
+    const response = await fetch(`/api/shopping-lists/${id}`);
+    const list = await response.json();
+    
+    document.getElementById('currentListName').innerHTML = `
+        <i class="bi bi-cart3 me-2"></i>${list.name}
+        ${list.store ? `<span class="badge bg-secondary ms-2">${list.store}</span>` : ''}
+    `;
+    
+    document.getElementById('listActions').style.display = 'block';
+    document.getElementById('listFooter').style.display = 'block';
+    document.getElementById('totalCost').textContent = (list.total_cost || 0).toFixed(2) + ' kr';
+    
+    // Uppdatera handla-knappen
+    document.getElementById('shopViewBtn').href = `/shopping-list/${id}/view`;
+    document.getElementById('mealPlanBtn').href = `/shopping-list/${id}/meals`;
+    
+    // Räkna antal varor
+    const totalItems = list.items.reduce((sum, item) => sum + item.quantity, 0);
+    document.getElementById('itemCount').textContent = `${totalItems} varor i listan`;
+    
+    const content = document.getElementById('listContent');
+    
+    if (!list.items || list.items.length === 0) {
+        content.innerHTML = `
+            <div class="text-center py-4 text-muted">
+                <i class="bi bi-basket me-2"></i>
+                Listan är tom. Sök efter produkter för att lägga till.
+                <br><br>
+                <a href="/search" class="btn btn-primary">
+                    <i class="bi bi-search me-2"></i>Sök produkter
+                </a>
+                <a href="/generate" class="btn btn-warning ms-2">
+                    <i class="bi bi-magic me-2"></i>Generera lista
+                </a>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = '<ul class="list-group list-group-flush">';
+    
+    for (const item of list.items) {
+        const product = item.product;
+        const priceInfo = getPrice(product, list.store);
+        const price = priceInfo?.price;
+        const bestStore = priceInfo?.store;
+        const itemTotal = price ? (price * item.quantity).toFixed(2) : '-';
+        const nutrition = product?.nutrition;
+        
+        // Butiksklassnamn för färgkodning
+        const storeClass = bestStore ? `store-${bestStore.toLowerCase().replace('ö','o')}` : '';
+        const showStoreBadge = bestStore && !list.store; // Visa bara om "bästa pris" valt
+        
+        html += `
+            <li class="list-group-item ${item.checked ? 'bg-light' : ''}">
+                <div class="d-flex align-items-center">
+                    <input type="checkbox" class="form-check-input me-3" 
+                           ${item.checked ? 'checked' : ''} 
+                           onchange="toggleItem(${item.id}, this.checked)">
+                    <div class="flex-grow-1 ${item.checked ? 'text-decoration-line-through text-muted' : ''}">
+                        <strong>${product?.name || 'Okänd produkt'}</strong>
+                        ${showStoreBadge ? `<span class="badge ${storeClass} ms-2" style="font-size: 0.65rem;">${bestStore}</span>` : ''}
+                        <br>
+                        <small class="text-muted">
+                            ${product?.weight || ''}
+                            ${nutrition ? `<span class="ms-2"><i class="bi bi-fire"></i> ${nutrition.calories || '-'} kcal</span>` : ''}
+                            ${nutrition?.protein ? `<span class="ms-2"><i class="bi bi-droplet"></i> ${nutrition.protein}g protein</span>` : ''}
+                        </small>
+                    </div>
+                    <div class="text-end me-2">
+                        <span class="price-tag fw-bold">${itemTotal} kr</span>
+                        <br>
+                        <small class="text-muted">${price ? price.toFixed(2) + ' kr' : '-'} x ${item.quantity}</small>
+                    </div>
+                    <button class="btn btn-sm btn-outline-danger" onclick="removeItem(${item.id})">
+                        <i class="bi bi-x"></i>
+                    </button>
+                </div>
+            </li>
+        `;
+    }
+    
+    html += '</ul>';
+    content.innerHTML = html;
+}
+
+function getPrice(product, preferredStore) {
+    if (!product || !product.prices || product.prices.length === 0) return null;
+    
+    // Försök hitta pris för vald butik
+    for (const p of product.prices) {
+        if (preferredStore && p.store.toLowerCase() === preferredStore.toLowerCase()) {
+            return { price: p.price, store: p.store };
+        }
+    }
+    
+    // Returnera lägsta pris med butiksnamn
+    let bestPrice = null;
+    let bestStore = null;
+    for (const p of product.prices) {
+        if (!bestPrice || p.price < bestPrice) {
+            bestPrice = p.price;
+            bestStore = p.store;
+        }
+    }
+    return { price: bestPrice, store: bestStore };
+}
+
+async function toggleItem(itemId, checked) {
+    await fetch(`/api/shopping-items/${itemId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ checked })
+    });
+    
+    loadList(currentListId);
+}
+
+async function removeItem(itemId) {
+    await fetch(`/api/shopping-items/${itemId}`, { method: 'DELETE' });
+    loadList(currentListId);
+}
+
+async function deleteCurrentList() {
+    if (!currentListId) return;
+    
+    if (confirm('Vill du ta bort denna lista?')) {
+        await fetch(`/api/shopping-lists/${currentListId}`, { method: 'DELETE' });
+        location.reload();
+    }
+}
+</script>
+{% endblock %}

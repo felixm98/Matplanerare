@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+
+{% block title %}Näringsplan - Matplanerare{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-clipboard-plus me-2"></i>Skapa ny näringsplan
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <form id="planForm">
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">Namn på plan</label>
+                            <input type="text" class="form-control" name="name" value="Min näringsplan" required>
+                        </div>
+                        
+                        <h6 class="text-muted mb-3">
+                            <i class="bi bi-fire me-2"></i>Makronäringsämnen (per dag)
+                        </h6>
+                        
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6">
+                                <label class="form-label">Kalorier (kcal)</label>
+                                <input type="number" class="form-control" name="calories" value="2000" min="1000" max="5000">
+                                <small class="text-muted">Rekommenderat: 2000-2500 kcal</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Protein (g)</label>
+                                <input type="number" class="form-control" name="protein" value="50" min="20" max="300">
+                                <small class="text-muted">Rekommenderat: 50-100 g</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Kolhydrater (g)</label>
+                                <input type="number" class="form-control" name="carbs" value="250" min="50" max="500">
+                                <small class="text-muted">Rekommenderat: 225-325 g</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Fett (g)</label>
+                                <input type="number" class="form-control" name="fat" value="65" min="20" max="200">
+                                <small class="text-muted">Rekommenderat: 44-78 g</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Fiber (g)</label>
+                                <input type="number" class="form-control" name="fiber" value="30" min="10" max="60">
+                                <small class="text-muted">Rekommenderat: 25-35 g</small>
+                            </div>
+                        </div>
+
+                        <h6 class="text-muted mb-3">
+                            <i class="bi bi-capsule me-2"></i>Vitaminer & Mineraler (per dag)
+                        </h6>
+                        
+                        <div class="alert alert-info small mb-3">
+                            <i class="bi bi-lightbulb me-2"></i>
+                            <strong>Tips:</strong> Öka dessa värden för att få fler grönsaker och frukter i din inköpslista!
+                        </div>
+                        
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6">
+                                <label class="form-label">
+                                    Vitamin C (mg)
+                                    <span class="badge bg-success ms-1" title="Finns i: paprika, broccoli, apelsin, tomat">🥦🍊</span>
+                                </label>
+                                <input type="number" class="form-control" name="vitamin_c" value="75" min="10" max="2000">
+                                <small class="text-muted">Bra källor: paprika, broccoli, citrusfrukter</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">
+                                    Vitamin D (µg)
+                                    <span class="badge bg-primary ms-1" title="Finns i: lax, ägg">🐟🥚</span>
+                                </label>
+                                <input type="number" class="form-control" name="vitamin_d" value="10" min="1" max="100">
+                                <small class="text-muted">Bra källor: fet fisk, ägg, berikade produkter</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">
+                                    Vitamin A (µg)
+                                    <span class="badge bg-warning text-dark ms-1" title="Finns i: morot">🥕</span>
+                                </label>
+                                <input type="number" class="form-control" name="vitamin_a" value="800" min="100" max="3000">
+                                <small class="text-muted">Bra källor: morötter, spenat, sötpotatis</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">
+                                    Kalcium (mg)
+                                    <span class="badge bg-light text-dark ms-1" title="Finns i: mjölk, ost, yoghurt">🥛🧀</span>
+                                </label>
+                                <input type="number" class="form-control" name="calcium" value="800" min="100" max="2500">
+                                <small class="text-muted">Bra källor: mejeriprodukter, tofu, broccoli</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">
+                                    Järn (mg)
+                                    <span class="badge bg-danger ms-1" title="Finns i: nötfärs, linser, spenat">🥩🫘</span>
+                                </label>
+                                <input type="number" class="form-control" name="iron" value="15" min="5" max="50">
+                                <small class="text-muted">Bra källor: rött kött, linser, baljväxter, spenat</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">
+                                    Kalium (mg)
+                                    <span class="badge bg-secondary ms-1" title="Finns i: banan, potatis, avokado">🍌🥔</span>
+                                </label>
+                                <input type="number" class="form-control" name="potassium" value="3500" min="1000" max="5000">
+                                <small class="text-muted">Bra källor: bananer, potatis, avokado</small>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-save me-2"></i>Spara plan
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-collection me-2"></i>Sparade planer
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div id="plansList">
+                        {% if plans %}
+                            {% for plan in plans %}
+                            <div class="d-flex justify-content-between align-items-center p-2 border-bottom">
+                                <div>
+                                    <strong>{{ plan.name }}</strong>
+                                    <br>
+                                    <small class="text-muted">{{ plan.calories_target }} kcal/dag</small>
+                                </div>
+                                <div>
+                                    <button class="btn btn-sm btn-outline-danger" onclick="deletePlan({{ plan.id }})">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <p class="text-muted text-center mb-0">
+                                <i class="bi bi-inbox me-2"></i>Inga planer sparade än
+                            </p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="bi bi-info-circle me-2"></i>Fördefinierade mål
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <button class="btn btn-outline-secondary btn-sm w-100 mb-2" onclick="loadPreset('standard')">
+                        Standard (2000 kcal)
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm w-100 mb-2" onclick="loadPreset('weightloss')">
+                        Viktminskning (1500 kcal)
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm w-100 mb-2" onclick="loadPreset('muscle')">
+                        Muskelbyggande (2500 kcal)
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm w-100" onclick="loadPreset('lowcarb')">
+                        Lågkolhydrat
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const presets = {
+    standard: { name: 'Standard', calories: 2000, protein: 50, carbs: 250, fat: 65, fiber: 30 },
+    weightloss: { name: 'Viktminskning', calories: 1500, protein: 75, carbs: 150, fat: 50, fiber: 35 },
+    muscle: { name: 'Muskelbyggande', calories: 2500, protein: 150, carbs: 300, fat: 70, fiber: 30 },
+    lowcarb: { name: 'Lågkolhydrat', calories: 1800, protein: 100, carbs: 50, fat: 120, fiber: 25 }
+};
+
+function loadPreset(preset) {
+    const p = presets[preset];
+    document.querySelector('[name="name"]').value = p.name;
+    document.querySelector('[name="calories"]').value = p.calories;
+    document.querySelector('[name="protein"]').value = p.protein;
+    document.querySelector('[name="carbs"]').value = p.carbs;
+    document.querySelector('[name="fat"]').value = p.fat;
+    document.querySelector('[name="fiber"]').value = p.fiber;
+}
+
+document.getElementById('planForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const formData = new FormData(e.target);
+    const data = Object.fromEntries(formData);
+    
+    // Konvertera till rätt typer
+    data.calories = parseInt(data.calories);
+    data.protein = parseInt(data.protein);
+    data.carbs = parseInt(data.carbs);
+    data.fat = parseInt(data.fat);
+    data.fiber = parseInt(data.fiber);
+    data.vitamin_c = parseInt(data.vitamin_c);
+    data.vitamin_d = parseInt(data.vitamin_d);
+    data.calcium = parseInt(data.calcium);
+    data.iron = parseInt(data.iron);
+    
+    const response = await fetch('/api/plans', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    });
+    
+    if (response.ok) {
+        location.reload();
+    }
+});
+
+async function deletePlan(id) {
+    if (confirm('Vill du ta bort denna plan?')) {
+        await fetch(`/api/plans/${id}`, { method: 'DELETE' });
+        location.reload();
+    }
+}
+</script>
+{% endblock %}

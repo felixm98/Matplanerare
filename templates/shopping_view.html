@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>{{ shopping_list.name }} - Handla</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding-bottom: 100px;
+        }
+        
+        .header {
+            background: rgba(255,255,255,0.95);
+            padding: 16px 20px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        
+        .header h1 {
+            font-size: 1.3rem;
+            color: #333;
+        }
+        
+        .back-link {
+            color: #667eea;
+            text-decoration: none;
+            font-size: 1rem;
+        }
+        
+        .progress-bar {
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            transition: width 0.3s ease;
+        }
+        
+        .progress-text {
+            font-size: 0.85rem;
+            color: #666;
+            margin-top: 4px;
+            text-align: center;
+        }
+        
+        .category-section {
+            margin: 16px 12px;
+        }
+        
+        .category-header {
+            background: rgba(255,255,255,0.9);
+            padding: 12px 16px;
+            border-radius: 12px 12px 0 0;
+            font-weight: 600;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1.1rem;
+        }
+        
+        .category-emoji {
+            font-size: 1.5rem;
+        }
+        
+        .product-list {
+            background: rgba(255,255,255,0.95);
+            border-radius: 0 0 12px 12px;
+        }
+        
+        .product-item {
+            display: flex;
+            align-items: center;
+            padding: 16px;
+            border-bottom: 1px solid #f0f0f0;
+            gap: 14px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .product-item:last-child {
+            border-bottom: none;
+        }
+        
+        .product-item:active {
+            background: #f5f5f5;
+        }
+        
+        .product-item.checked {
+            background: #f0fff4;
+        }
+        
+        .product-item.checked .product-name,
+        .product-item.checked .product-details {
+            text-decoration: line-through;
+            color: #999;
+        }
+        
+        .checkbox-container {
+            width: 32px;
+            height: 32px;
+            min-width: 32px;
+            border: 3px solid #667eea;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        
+        .product-item.checked .checkbox-container {
+            background: #667eea;
+        }
+        
+        .checkmark {
+            color: white;
+            font-size: 1.2rem;
+            display: none;
+        }
+        
+        .product-item.checked .checkmark {
+            display: block;
+        }
+        
+        .product-emoji {
+            font-size: 2.2rem;
+            min-width: 44px;
+            text-align: center;
+        }
+        
+        .product-image {
+            width: 60px;
+            height: 60px;
+            object-fit: contain;
+            border-radius: 8px;
+            background: #f9f9f9;
+        }
+        
+        .product-image-container {
+            min-width: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .product-info {
+            flex: 1;
+        }
+        
+        .product-name {
+            font-weight: 600;
+            color: #333;
+            font-size: 1.05rem;
+            margin-bottom: 2px;
+        }
+        
+        .product-details {
+            font-size: 0.85rem;
+            color: #666;
+        }
+        
+        .product-price {
+            font-weight: 700;
+            font-size: 1.15rem;
+            color: #667eea;
+            text-align: right;
+            min-width: 70px;
+        }
+        
+        .product-quantity {
+            background: #667eea;
+            color: white;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+        
+        .total-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            padding: 20px;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
+            z-index: 100;
+        }
+        
+        .total-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .total-label {
+            font-size: 1rem;
+            color: #666;
+        }
+        
+        .total-amount {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: #333;
+        }
+        
+        .remaining {
+            font-size: 0.85rem;
+            color: #667eea;
+        }
+        
+        .store-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .store-ica { background: #e91e63; color: white; }
+        .store-coop { background: #00a651; color: white; }
+        .store-willys { background: #e30613; color: white; }
+        .store-hemkop, .store-hemköp { background: #00923f; color: white; }
+        .store-lidl { background: #0050aa; color: white; }
+        
+        .store-badge-small {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 8px;
+            font-size: 0.6rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-top: 2px;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: white;
+        }
+        
+        .empty-state .emoji {
+            font-size: 4rem;
+            margin-bottom: 16px;
+        }
+        
+        .empty-state p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        
+        /* Konfetti-animation när allt är klart */
+        @keyframes celebrate {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+        
+        .all-done {
+            animation: celebrate 0.5s ease;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-top">
+            <a href="{{ url_for('shopping_list_page') }}" class="back-link">← Tillbaka</a>
+            <h1>{{ shopping_list.name }}</h1>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <a href="{{ url_for('meal_plan_view', list_id=shopping_list.id) }}" 
+                   style="background: #f39c12; color: white; padding: 4px 10px; border-radius: 6px; text-decoration: none; font-size: 0.85rem;">
+                    🍽️ Måltider
+                </a>
+                {% if shopping_list.store %}
+                <span class="store-badge store-{{ shopping_list.store|lower|replace('ö','o') }}">
+                    {{ shopping_list.store }}
+                </span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+        </div>
+        <div class="progress-text" id="progressText">0 av 0 produkter</div>
+    </div>
+    
+    {% if categories %}
+        {% for category, items in categories.items() %}
+        <div class="category-section">
+            <div class="category-header">
+                <span class="category-emoji">{{ items[0].emoji if items else '🛒' }}</span>
+                <span>{{ category|capitalize }}</span>
+                <span style="margin-left: auto; font-size: 0.9rem; color: #999;">{{ items|length }} st</span>
+            </div>
+            <div class="product-list">
+                {% for item_data in items %}
+                <div class="product-item" data-item-id="{{ item_data.item.id }}" data-price="{{ item_data.price or 0 }}" onclick="toggleItem(this)">
+                    <div class="checkbox-container">
+                        <span class="checkmark">✓</span>
+                    </div>
+                    <div class="product-image-container">
+                        {% if item_data.product and item_data.product.image_url %}
+                        <img src="{{ item_data.product.image_url }}" alt="{{ item_data.product.name }}" class="product-image" onerror="this.onerror=null; this.parentElement.innerHTML='<span class=\'product-emoji\'>{{ item_data.emoji }}</span>';">
+                        {% else %}
+                        <span class="product-emoji">{{ item_data.emoji }}</span>
+                        {% endif %}
+                    </div>
+                    <div class="product-info">
+                        <div class="product-name">{{ item_data.product.name if item_data.product else 'Okänd produkt' }}</div>
+                        <div class="product-details">
+                            {% if item_data.product %}
+                                {{ item_data.product.brand or '' }}
+                                {% if item_data.product.weight %}{{ item_data.product.weight }}{% endif %}
+                            {% endif %}
+                            {% if item_data.store and not shopping_list.store %}
+                            <br><span class="store-badge-small store-{{ item_data.store|lower|replace('ö','o') }}">{{ item_data.store }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <span class="product-quantity">{{ item_data.item.quantity }} st</span>
+                    {% if item_data.price %}
+                    <div class="product-price">{{ "%.0f"|format(item_data.price * item_data.item.quantity) }} kr</div>
+                    {% else %}
+                    <div class="product-price" style="color: #999;">- kr</div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="empty-state">
+            <div class="emoji">🛒</div>
+            <p>Inga produkter i listan ännu</p>
+        </div>
+    {% endif %}
+    
+    <div class="total-bar">
+        <div class="total-content">
+            <div>
+                <div class="total-label">Totalt</div>
+                <div class="remaining" id="remainingText"></div>
+            </div>
+            <div class="total-amount" id="totalAmount">0 kr</div>
+        </div>
+    </div>
+    
+    <script>
+        // Spara checkade items i localStorage
+        const listId = {{ shopping_list.id }};
+        const storageKey = `shopping_list_${listId}_checked`;
+        
+        function getCheckedItems() {
+            const saved = localStorage.getItem(storageKey);
+            return saved ? JSON.parse(saved) : [];
+        }
+        
+        function saveCheckedItems(items) {
+            localStorage.setItem(storageKey, JSON.stringify(items));
+        }
+        
+        function toggleItem(element) {
+            const itemId = element.dataset.itemId;
+            let checkedItems = getCheckedItems();
+            
+            if (element.classList.contains('checked')) {
+                element.classList.remove('checked');
+                checkedItems = checkedItems.filter(id => id !== itemId);
+            } else {
+                element.classList.add('checked');
+                checkedItems.push(itemId);
+            }
+            
+            saveCheckedItems(checkedItems);
+            updateProgress();
+        }
+        
+        function updateProgress() {
+            const allItems = document.querySelectorAll('.product-item');
+            const checkedItems = document.querySelectorAll('.product-item.checked');
+            const total = allItems.length;
+            const checked = checkedItems.length;
+            
+            // Uppdatera progress bar
+            const percent = total > 0 ? (checked / total) * 100 : 0;
+            document.getElementById('progressFill').style.width = percent + '%';
+            document.getElementById('progressText').textContent = `${checked} av ${total} produkter`;
+            
+            // Beräkna totaler
+            let totalPrice = 0;
+            let remainingPrice = 0;
+            
+            allItems.forEach(item => {
+                const price = parseFloat(item.dataset.price) || 0;
+                const quantity = parseInt(item.querySelector('.product-quantity').textContent) || 1;
+                const itemTotal = price * quantity;
+                totalPrice += itemTotal;
+                
+                if (!item.classList.contains('checked')) {
+                    remainingPrice += itemTotal;
+                }
+            });
+            
+            document.getElementById('totalAmount').textContent = Math.round(totalPrice) + ' kr';
+            
+            if (checked > 0 && checked < total) {
+                document.getElementById('remainingText').textContent = `${Math.round(remainingPrice)} kr kvar`;
+            } else if (checked === total && total > 0) {
+                document.getElementById('remainingText').textContent = '🎉 Klar!';
+                document.querySelector('.total-bar').classList.add('all-done');
+            } else {
+                document.getElementById('remainingText').textContent = '';
+            }
+        }
+        
+        // Återställ checkade items vid sidladdning
+        document.addEventListener('DOMContentLoaded', () => {
+            const checkedItems = getCheckedItems();
+            checkedItems.forEach(itemId => {
+                const element = document.querySelector(`[data-item-id="${itemId}"]`);
+                if (element) {
+                    element.classList.add('checked');
+                }
+            });
+            updateProgress();
+        });
+    </script>
+</body>
+</html>
