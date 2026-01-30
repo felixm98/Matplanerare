@@ -3,11 +3,11 @@ Hjälper dig planera ditt kalori och mineral/vitamin intag samt sätter upp en m
 
 ## Kom igång
 
-### Klona och använd detta projekt
+### Skapa din egen version
 
 För att skapa din egen version av detta projekt, följ dessa steg:
 
-1. Klona eller ladda ner detta repository till din dator
+1. Ladda ner projektfilerna (inte klona med git)
 2. Öppna en terminal och navigera till projektmappen
 3. Initiera ett git repository och pusha till ditt eget GitHub-konto:
 
