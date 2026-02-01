@@ -100,6 +100,79 @@
                         </div>
                         
                         <hr class="my-4">
+                        
+                        <!-- NYTT: Måltidsval -->
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">
+                                <i class="bi bi-clock me-2"></i>Vilka måltider vill du planera?
+                            </label>
+                            <div class="row g-2">
+                                <div class="col-6 col-md-3">
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="checkbox" name="include_breakfast" id="includeBreakfast" checked>
+                                        <label class="form-check-label" for="includeBreakfast">
+                                            🌅 Frukost
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-6 col-md-3">
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="checkbox" name="include_lunch" id="includeLunch" checked>
+                                        <label class="form-check-label" for="includeLunch">
+                                            🌞 Lunch
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-6 col-md-3">
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="checkbox" name="include_dinner" id="includeDinner" checked>
+                                        <label class="form-check-label" for="includeDinner">
+                                            🌙 Middag
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-6 col-md-3">
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="checkbox" name="include_snacks" id="includeSnacks">
+                                        <label class="form-check-label" for="includeSnacks">
+                                            🍎 Mellanmål
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                            <small class="text-muted">Avmarkera måltider du inte behöver (t.ex. om du inte äter frukost)</small>
+                        </div>
+                        
+                        <hr class="my-4">
+                        
+                        <!-- NYTT: AI-receptgenerering -->
+                        <div class="mb-4">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" name="use_ai_recipes" id="useAiRecipes" role="switch">
+                                <label class="form-check-label fw-bold" for="useAiRecipes">
+                                    <i class="bi bi-stars me-2 text-warning"></i>AI-genererade recept
+                                </label>
+                            </div>
+                            <div id="aiRecipeInfo" class="mt-2 p-3 bg-light rounded" style="display: none;">
+                                <p class="mb-2 small">
+                                    <i class="bi bi-info-circle me-1 text-info"></i>
+                                    Med AI-recept skapas en veckomeny med riktiga recept först, sedan genereras inköpslistan från ingredienserna.
+                                </p>
+                                <ul class="small mb-0">
+                                    <li>🍳 Få konkreta receptförslag för varje måltid</li>
+                                    <li>📝 Ingredienser hämtas från vald butik</li>
+                                    <li>🔄 Generera om tills du blir nöjd</li>
+                                </ul>
+                                {% if not ai_available %}
+                                <div class="alert alert-warning mt-2 mb-0 py-2 small">
+                                    <i class="bi bi-exclamation-triangle me-1"></i>
+                                    AI-tjänsten är inte konfigurerad. Kontakta administratören.
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        <hr class="my-4">
 
                         <div class="mb-4">
                             <label class="form-label fw-bold">Föredragen butik</label>
@@ -218,6 +291,11 @@ function changeHouseholdSize(delta) {
     input.value = newVal;
 }
 
+// Toggle AI recipe info
+document.getElementById('useAiRecipes').addEventListener('change', function() {
+    document.getElementById('aiRecipeInfo').style.display = this.checked ? 'block' : 'none';
+});
+
 document.getElementById('generateForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     
@@ -236,8 +314,22 @@ document.getElementById('generateForm').addEventListener('submit', async (e) => 
         store: formData.get('store') || null,
         household_size: parseInt(formData.get('household_size')) || 1,
         budget: budget ? parseFloat(budget) : null,
-        prefer_cheaper: formData.get('prefer_cheaper') === 'on'
+        prefer_cheaper: formData.get('prefer_cheaper') === 'on',
+        // Nya fält
+        include_breakfast: formData.get('include_breakfast') === 'on',
+        include_lunch: formData.get('include_lunch') === 'on',
+        include_dinner: formData.get('include_dinner') === 'on',
+        include_snacks: formData.get('include_snacks') === 'on',
+        use_ai_recipes: formData.get('use_ai_recipes') === 'on'
     };
+    
+    // Kontrollera att minst en måltid är vald
+    if (!data.include_breakfast && !data.include_lunch && !data.include_dinner && !data.include_snacks) {
+        alert('Du måste välja minst en måltid!');
+        form.classList.remove('loading');
+        button.disabled = false;
+        return;
+    }
     
     try {
         const response = await fetch('/api/generate-list', {

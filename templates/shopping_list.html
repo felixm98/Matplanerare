@@ -94,6 +94,12 @@
                                 <li><a class="dropdown-item" href="#" onclick="exportList('csv')"><i class="bi bi-file-earmark-csv me-2"></i>CSV-fil</a></li>
                                 <li><a class="dropdown-item" href="#" onclick="exportList('text')"><i class="bi bi-clipboard me-2"></i>Kopiera text</a></li>
                                 <li><hr class="dropdown-divider"></li>
+                                <li class="dropdown-header">Dela via</li>
+                                <li><a class="dropdown-item" href="#" onclick="shareList('messenger')"><i class="bi bi-messenger me-2" style="color: #006AFF;"></i>Messenger</a></li>
+                                <li><a class="dropdown-item" href="#" onclick="shareList('whatsapp')"><i class="bi bi-whatsapp me-2" style="color: #25D366;"></i>WhatsApp</a></li>
+                                <li><a class="dropdown-item" href="#" onclick="shareList('sms')"><i class="bi bi-chat-dots me-2" style="color: #34C759;"></i>SMS</a></li>
+                                <li><a class="dropdown-item" href="#" onclick="shareList('email')"><i class="bi bi-envelope me-2" style="color: #EA4335;"></i>E-post</a></li>
+                                <li><hr class="dropdown-divider"></li>
                                 <li class="dropdown-header">Butiks-format</li>
                                 <li><a class="dropdown-item" href="#" onclick="exportList('store/ica')"><span style="color: #e91e63;">●</span> ICA</a></li>
                                 <li><a class="dropdown-item" href="#" onclick="exportList('store/coop')"><span style="color: #00a651;">●</span> Coop</a></li>
@@ -403,6 +409,34 @@ async function deleteCurrentList() {
     if (confirm('Vill du ta bort denna lista?')) {
         await fetch(`/api/shopping-lists/${currentListId}`, { method: 'DELETE' });
         location.reload();
+    }
+}
+
+// Dela-funktioner
+async function shareList(platform) {
+    if (!currentListId) return;
+    
+    // Hämta text från API
+    const response = await fetch(`/api/shopping-lists/${currentListId}/export/text`);
+    const data = await response.json();
+    const text = data.text;
+    const listName = document.querySelector('#listContent h5')?.textContent || 'Inköpslista';
+    
+    switch(platform) {
+        case 'messenger':
+            // Facebook Messenger
+            window.open(`https://www.facebook.com/dialog/send?link=${encodeURIComponent(window.location.href)}&redirect_uri=${encodeURIComponent(window.location.href)}`, '_blank');
+            break;
+        case 'whatsapp':
+            window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+            break;
+        case 'sms':
+            window.location.href = `sms:?body=${encodeURIComponent(text)}`;
+            break;
+        case 'email':
+            const subject = encodeURIComponent(`🛒 Inköpslista: ${listName}`);
+            window.location.href = `mailto:?subject=${subject}&body=${encodeURIComponent(text)}`;
+            break;
     }
 }
 

@@ -282,6 +282,152 @@
         .all-done {
             animation: celebrate 0.5s ease;
         }
+        
+        /* Dela-meny */
+        .share-btn {
+            background: #25D366;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .share-menu {
+            display: none;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            border-radius: 20px 20px 0 0;
+            box-shadow: 0 -4px 30px rgba(0,0,0,0.3);
+            z-index: 200;
+            padding: 20px;
+            padding-bottom: 30px;
+        }
+        
+        .share-menu.active {
+            display: block;
+            animation: slideUp 0.3s ease;
+        }
+        
+        @keyframes slideUp {
+            from { transform: translateY(100%); }
+            to { transform: translateY(0); }
+        }
+        
+        .share-menu-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .share-menu-header h3 {
+            margin: 0;
+            font-size: 1.1rem;
+        }
+        
+        .close-share {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #666;
+        }
+        
+        .share-options {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            text-align: center;
+        }
+        
+        .share-option {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            padding: 12px;
+            border-radius: 12px;
+            transition: background 0.2s;
+            text-decoration: none;
+            color: #333;
+        }
+        
+        .share-option:active {
+            background: #f0f0f0;
+        }
+        
+        .share-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+        
+        .share-icon.messenger { background: linear-gradient(135deg, #00B2FF, #006AFF); }
+        .share-icon.whatsapp { background: #25D366; }
+        .share-icon.sms { background: #34C759; }
+        .share-icon.email { background: #EA4335; }
+        .share-icon.copy { background: #667eea; }
+        .share-icon.native { background: linear-gradient(135deg, #667eea, #764ba2); }
+        
+        .share-label {
+            font-size: 0.75rem;
+            color: #666;
+        }
+        
+        .share-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 199;
+        }
+        
+        .share-overlay.active {
+            display: block;
+        }
+        
+        .copy-toast {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            display: none;
+            z-index: 300;
+        }
+        
+        .copy-toast.show {
+            display: block;
+            animation: fadeInOut 2s ease;
+        }
+        
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: translateX(-50%) translateY(20px); }
+            20% { opacity: 1; transform: translateX(-50%) translateY(0); }
+            80% { opacity: 1; transform: translateX(-50%) translateY(0); }
+            100% { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+        }
     </style>
 </head>
 <body>
@@ -290,6 +436,9 @@
             <a href="{{ url_for('shopping_list_page') }}" class="back-link">← Tillbaka</a>
             <h1>{{ shopping_list.name }}</h1>
             <div style="display: flex; gap: 8px; align-items: center;">
+                <button class="share-btn" onclick="openShareMenu()">
+                    📤 Dela
+                </button>
                 <a href="{{ url_for('meal_plan_view', list_id=shopping_list.id) }}" 
                    style="background: #f39c12; color: white; padding: 4px 10px; border-radius: 6px; text-decoration: none; font-size: 0.85rem;">
                     🍽️ Måltider
@@ -447,6 +596,148 @@
             });
             updateProgress();
         });
+    </script>
+    
+    <!-- Dela-meny -->
+    <div class="share-overlay" id="shareOverlay" onclick="closeShareMenu()"></div>
+    <div class="share-menu" id="shareMenu">
+        <div class="share-menu-header">
+            <h3>📤 Dela inköpslistan</h3>
+            <button class="close-share" onclick="closeShareMenu()">×</button>
+        </div>
+        <div class="share-options">
+            <a class="share-option" onclick="shareToMessenger()">
+                <div class="share-icon messenger">💬</div>
+                <span class="share-label">Messenger</span>
+            </a>
+            <a class="share-option" onclick="shareToWhatsApp()">
+                <div class="share-icon whatsapp">📱</div>
+                <span class="share-label">WhatsApp</span>
+            </a>
+            <a class="share-option" onclick="shareToSMS()">
+                <div class="share-icon sms">💬</div>
+                <span class="share-label">SMS</span>
+            </a>
+            <a class="share-option" onclick="shareToEmail()">
+                <div class="share-icon email">✉️</div>
+                <span class="share-label">E-post</span>
+            </a>
+            <a class="share-option" onclick="copyToClipboard()">
+                <div class="share-icon copy">📋</div>
+                <span class="share-label">Kopiera</span>
+            </a>
+            <a class="share-option" onclick="nativeShare()" id="nativeShareBtn" style="display: none;">
+                <div class="share-icon native">📤</div>
+                <span class="share-label">Mer...</span>
+            </a>
+        </div>
+    </div>
+    <div class="copy-toast" id="copyToast">✓ Kopierat till urklipp!</div>
+    
+    <script>
+        // Generera inköpslista som text
+        function generateShareText() {
+            let text = "🛒 INKÖPSLISTA: {{ shopping_list.name }}\n";
+            text += "━━━━━━━━━━━━━━━━━━━━\n\n";
+            
+            {% for category, items in categories.items() %}
+            text += "{{ items[0].emoji if items else '🛒' }} {{ category|upper }}\n";
+            {% for item_data in items %}
+            text += "  ☐ {{ item_data.product.name if item_data.product else 'Produkt' }} ({{ item_data.item.quantity }} st)";
+            {% if item_data.price %}
+            text += " - {{ '%.0f'|format(item_data.price * item_data.item.quantity) }} kr";
+            {% endif %}
+            text += "\n";
+            {% endfor %}
+            text += "\n";
+            {% endfor %}
+            
+            text += "━━━━━━━━━━━━━━━━━━━━\n";
+            text += "💰 Totalt: ca {{ '%.0f'|format(shopping_list.total_cost or 0) }} kr\n";
+            {% if shopping_list.store %}
+            text += "🏪 Butik: {{ shopping_list.store }}\n";
+            {% endif %}
+            
+            return text;
+        }
+        
+        function openShareMenu() {
+            document.getElementById('shareOverlay').classList.add('active');
+            document.getElementById('shareMenu').classList.add('active');
+            
+            // Visa native share om tillgänglig
+            if (navigator.share) {
+                document.getElementById('nativeShareBtn').style.display = 'flex';
+            }
+        }
+        
+        function closeShareMenu() {
+            document.getElementById('shareOverlay').classList.remove('active');
+            document.getElementById('shareMenu').classList.remove('active');
+        }
+        
+        function shareToMessenger() {
+            const text = encodeURIComponent(generateShareText());
+            // Messenger använder Facebook's dialog eller m.me
+            const url = `fb-messenger://share?link=${encodeURIComponent(window.location.href)}&app_id=123456`;
+            
+            // Fallback till webbversion
+            window.open(`https://www.facebook.com/dialog/send?link=${encodeURIComponent(window.location.href)}&redirect_uri=${encodeURIComponent(window.location.href)}`, '_blank');
+            closeShareMenu();
+        }
+        
+        function shareToWhatsApp() {
+            const text = encodeURIComponent(generateShareText());
+            window.open(`https://wa.me/?text=${text}`, '_blank');
+            closeShareMenu();
+        }
+        
+        function shareToSMS() {
+            const text = encodeURIComponent(generateShareText());
+            // sms: protocol fungerar på mobiler
+            window.location.href = `sms:?body=${text}`;
+            closeShareMenu();
+        }
+        
+        function shareToEmail() {
+            const subject = encodeURIComponent("🛒 Inköpslista: {{ shopping_list.name }}");
+            const body = encodeURIComponent(generateShareText());
+            window.location.href = `mailto:?subject=${subject}&body=${body}`;
+            closeShareMenu();
+        }
+        
+        function copyToClipboard() {
+            const text = generateShareText();
+            navigator.clipboard.writeText(text).then(() => {
+                const toast = document.getElementById('copyToast');
+                toast.classList.add('show');
+                setTimeout(() => toast.classList.remove('show'), 2000);
+            }).catch(err => {
+                // Fallback för äldre webbläsare
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                
+                const toast = document.getElementById('copyToast');
+                toast.classList.add('show');
+                setTimeout(() => toast.classList.remove('show'), 2000);
+            });
+            closeShareMenu();
+        }
+        
+        function nativeShare() {
+            if (navigator.share) {
+                navigator.share({
+                    title: '🛒 Inköpslista: {{ shopping_list.name }}',
+                    text: generateShareText(),
+                    url: window.location.href
+                }).catch(err => console.log('Delning avbruten'));
+            }
+            closeShareMenu();
+        }
     </script>
 </body>
 </html>

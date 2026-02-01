@@ -14,6 +14,11 @@
             </nav>
             <h2>
                 <i class="bi bi-calendar3 me-2"></i>Måltidsplan
+                {% if has_ai_recipes %}
+                <span class="badge bg-info ms-2" style="font-size: 0.5em;">
+                    <i class="bi bi-robot me-1"></i>AI-recept
+                </span>
+                {% endif %}
             </h2>
             <p class="text-muted">
                 {{ shopping_list.name }} · {{ shopping_list.days }} dag{{ 'ar' if shopping_list.days > 1 else '' }}
@@ -22,7 +27,12 @@
                 {% endif %}
             </p>
         </div>
-        <div class="col-auto">
+        <div class="col-auto d-flex gap-2">
+            {% if has_ai_recipes %}
+            <button class="btn btn-outline-primary" onclick="regenerateRecipes()" id="regenerateBtn">
+                <i class="bi bi-arrow-clockwise me-2"></i>Generera om recept
+            </button>
+            {% endif %}
             <a href="{{ url_for('shopping_list_view', list_id=shopping_list.id) }}" class="btn btn-success">
                 <i class="bi bi-phone me-2"></i>Handla-vy
             </a>
@@ -131,6 +141,11 @@ const shoppingList = {{ shopping_list_json|safe }};
 const planData = {{ plan_json|safe }};
 const days = {{ shopping_list.days }};
 const householdSize = {{ shopping_list.household_size or 1 }};
+const listId = {{ shopping_list.id }};
+
+// AI-recept data
+const hasAIRecipes = {{ 'true' if has_ai_recipes else 'false' }};
+const aiRecipes = {{ recipes_json|safe }};
 
 // Hämta mål från plan - hantera att daily_targets innehåller objekt med {value, mode}
 function getTargetValue(planData, nutrient, defaultValue) {
@@ -612,14 +627,196 @@ function getCategoryIcon(category) {
 }
 
 function updateMealPlan() {
-    showDay(document.getElementById('selectedDay').value);
+    const dayNumber = parseInt(document.getElementById('selectedDay').value);
+    if (hasAIRecipes && aiRecipes.length > 0) {
+        showAIRecipesForDay(dayNumber);
+    } else {
+        showDay(dayNumber);
+    }
+}
+
+// ============== AI-RECEPT FUNKTIONER ==============
+function showAIRecipesForDay(dayNumber) {
+    const dayRecipes = aiRecipes.filter(r => r.day === dayNumber);
+    
+    document.getElementById('dayLabel').textContent = `Dag ${dayNumber}`;
+    
+    let totalCalories = 0, totalProtein = 0, totalCarbs = 0, totalFat = 0;
+    let html = '';
+    
+    // Gruppera recept efter måltidstyp
+    const mealOrder = ['frukost', 'mellanmål_fm', 'lunch', 'mellanmål_em', 'middag'];
+    const mealLabels = {
+        'frukost': '🌅 Frukost',
+        'mellanmål_fm': '🥤 Förmiddagsmellanmål',
+        'lunch': '🌞 Lunch',
+        'mellanmål_em': '🍎 Eftermiddagsmellanmål',
+        'middag': '🌙 Middag'
+    };
+    
+    html += `
+        <div class="alert alert-info mb-3">
+            <i class="bi bi-robot me-2"></i>
+            <strong>AI-genererade recept</strong> - Dessa recept har skapats baserat på dina preferenser och ingredienser från Matspar.
+            <button class="btn btn-sm btn-outline-info float-end" onclick="regenerateRecipes()">
+                <i class="bi bi-arrow-clockwise me-1"></i>Generera nya recept
+            </button>
+        </div>
+    `;
+    
+    mealOrder.forEach(mealType => {
+        const recipe = dayRecipes.find(r => r.meal_type === mealType);
+        if (!recipe) return;
+        
+        const isMainMeal = ['frukost', 'lunch', 'middag'].includes(mealType);
+        const mealCalories = recipe.calories_per_portion * (householdSize || 1);
+        
+        // Beräkna ungefärlig näring baserat på kalorier
+        const mealProtein = Math.round(mealCalories * 0.15 / 4); // 15% av kalorier från protein
+        const mealCarbs = Math.round(mealCalories * 0.50 / 4); // 50% från kolhydrater
+        const mealFat = Math.round(mealCalories * 0.35 / 9); // 35% från fett
+        
+        totalCalories += mealCalories;
+        totalProtein += mealProtein;
+        totalCarbs += mealCarbs;
+        totalFat += mealFat;
+        
+        const ingredients = recipe.ingredients || [];
+        const instructions = recipe.instructions || [];
+        
+        html += `
+            <div class="card mb-3 ${isMainMeal ? '' : 'border-secondary'}">
+                <div class="card-header ${isMainMeal ? 'bg-success text-white' : 'bg-light'}">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">${mealLabels[mealType] || mealType}</h5>
+                        <span class="badge ${isMainMeal ? 'bg-light text-success' : 'bg-secondary'}">
+                            ${Math.round(mealCalories)} kcal
+                        </span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <h4 class="text-primary mb-3">
+                        <i class="bi bi-book me-2"></i>${recipe.name}
+                    </h4>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6 class="text-muted mb-2"><i class="bi bi-basket me-1"></i>Ingredienser (${recipe.portions || 1} portioner):</h6>
+                            <ul class="list-group list-group-flush mb-3">
+        `;
+        
+        ingredients.forEach(ing => {
+            html += `
+                <li class="list-group-item py-2">
+                    <i class="bi bi-check-circle text-success me-2"></i>${ing}
+                </li>
+            `;
+        });
+        
+        html += `
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="text-muted mb-2">
+                                <i class="bi bi-clock me-1"></i>Tillagning (${recipe.prep_time_minutes || '?'} min):
+                            </h6>
+                            <ol class="list-group list-group-numbered list-group-flush">
+        `;
+        
+        instructions.forEach(step => {
+            html += `
+                <li class="list-group-item py-2">${step}</li>
+            `;
+        });
+        
+        html += `
+                            </ol>
+                        </div>
+                    </div>
+                    <div class="bg-light rounded p-3 mt-3">
+                        <div class="row text-center">
+                            <div class="col-3">
+                                <div class="fw-bold text-primary">${Math.round(mealCalories)}</div>
+                                <small class="text-muted">kcal</small>
+                            </div>
+                            <div class="col-3">
+                                <div class="fw-bold text-success">~${mealProtein}g</div>
+                                <small class="text-muted">protein</small>
+                            </div>
+                            <div class="col-3">
+                                <div class="fw-bold text-warning">~${mealCarbs}g</div>
+                                <small class="text-muted">kolhydrater</small>
+                            </div>
+                            <div class="col-3">
+                                <div class="fw-bold text-danger">~${mealFat}g</div>
+                                <small class="text-muted">fett</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    document.getElementById('mealsContainer').innerHTML = html;
+    
+    // Uppdatera daglig sammanfattning
+    document.getElementById('totalCalories').textContent = totalCalories;
+    document.getElementById('totalProtein').textContent = totalProtein + 'g';
+    document.getElementById('totalCarbs').textContent = totalCarbs + 'g';
+    document.getElementById('totalFat').textContent = totalFat + 'g';
+    
+    document.getElementById('caloriesBar').style.width = Math.min(100, (totalCalories / plan.calories_target) * 100) + '%';
+    document.getElementById('proteinBar').style.width = Math.min(100, (totalProtein / plan.protein_target) * 100) + '%';
+    document.getElementById('carbsBar').style.width = Math.min(100, (totalCarbs / plan.carbs_target) * 100) + '%';
+    document.getElementById('fatBar').style.width = Math.min(100, (totalFat / plan.fat_target) * 100) + '%';
+}
+
+async function regenerateRecipes() {
+    const btn = document.getElementById('regenerateBtn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Genererar...';
+    }
+    
+    try {
+        const response = await fetch(`/api/shopping-lists/${listId}/regenerate-recipes`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.error) {
+            alert('Kunde inte generera nya recept: ' + data.error);
+        } else {
+            // Ladda om sidan för att se nya recept
+            window.location.reload();
+        }
+    } catch (err) {
+        console.error('Fel vid regenerering:', err);
+        alert('Ett fel uppstod. Försök igen.');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-arrow-clockwise me-2"></i>Generera om recept';
+        }
+    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Tillgänglig mat per dag:', Math.round(dailyCaloriesFromFood), 'kcal');
     console.log('Mål per dag:', plan.calories_target, 'kcal');
     console.log('Täckning:', Math.round(calorieCoverage), '%');
-    showDay(1);
+    console.log('Har AI-recept:', hasAIRecipes);
+    
+    // Om vi har AI-recept, visa dem istället
+    if (hasAIRecipes && aiRecipes.length > 0) {
+        showAIRecipesForDay(1);
+    } else {
+        showDay(1);
+    }
 });
 </script>
 {% endblock %}

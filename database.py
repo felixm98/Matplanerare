@@ -462,6 +462,73 @@ class ShoppingItem(db.Model):
         }
 
 
+class Recipe(db.Model):
+    """AI-genererade recept"""
+    __tablename__ = 'recipes'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    shopping_list_id = db.Column(db.Integer, db.ForeignKey('shopping_lists.id'))
+    
+    day = db.Column(db.Integer, default=1)  # Dag 1-7
+    meal_type = db.Column(db.String(50))  # frukost, lunch, middag, mellanmål
+    
+    name = db.Column(db.String(200))
+    portions = db.Column(db.Integer, default=2)
+    calories_per_portion = db.Column(db.Integer)
+    prep_time_minutes = db.Column(db.Integer)
+    
+    ingredients_json = db.Column(db.Text)  # JSON-lista med ingredienser
+    instructions_json = db.Column(db.Text)  # JSON-lista med instruktioner
+    
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relation
+    shopping_list = db.relationship('ShoppingList', backref=db.backref('recipes', lazy=True, cascade='all, delete-orphan'))
+    
+    def get_ingredients(self):
+        """Hämta ingredienser som lista"""
+        import json
+        if self.ingredients_json:
+            try:
+                return json.loads(self.ingredients_json)
+            except:
+                return []
+        return []
+    
+    def set_ingredients(self, ingredients):
+        """Spara ingredienser"""
+        import json
+        self.ingredients_json = json.dumps(ingredients, ensure_ascii=False)
+    
+    def get_instructions(self):
+        """Hämta instruktioner som lista"""
+        import json
+        if self.instructions_json:
+            try:
+                return json.loads(self.instructions_json)
+            except:
+                return []
+        return []
+    
+    def set_instructions(self, instructions):
+        """Spara instruktioner"""
+        import json
+        self.instructions_json = json.dumps(instructions, ensure_ascii=False)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'day': self.day,
+            'meal_type': self.meal_type,
+            'name': self.name,
+            'portions': self.portions,
+            'calories_per_portion': self.calories_per_portion,
+            'prep_time_minutes': self.prep_time_minutes,
+            'ingredients': self.get_ingredients(),
+            'instructions': self.get_instructions()
+        }
+
+
 def init_db(app):
     """Initierar databasen"""
     db.init_app(app)

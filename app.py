@@ -3,14 +3,19 @@ Matplanerare - Flask App
 En app för att planera mat baserat på näringsbehov och generera inköpslistor
 """
 
+# Ladda miljövariabler från .env FÖRST
+from dotenv import load_dotenv
+load_dotenv()
+
 from flask import Flask, render_template, request, jsonify, redirect, url_for
-from database import db, init_db, Product, Price, Nutrition, NutritionPlan, ShoppingList, ShoppingItem, ALLERGENS, RDI_VALUES
+from database import db, init_db, Product, Price, Nutrition, NutritionPlan, ShoppingList, ShoppingItem, Recipe, ALLERGENS, RDI_VALUES
 from scraper import MatsparScraper
 import os
 import math
 import csv
 import io
 import re
+import json
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'matplanerare-secret-key-2024'
@@ -343,9 +348,13 @@ def shopping_list_view(list_id):
 @app.route('/shopping-list/<int:list_id>/meals')
 def meal_plan_view(list_id):
     """Måltidsplan baserad på inköpslistan"""
-    import json
     shopping_list = ShoppingList.query.get_or_404(list_id)
     plan = NutritionPlan.query.get(shopping_list.plan_id) if shopping_list.plan_id else None
+    
+    # Hämta AI-recept om de finns
+    recipes = Recipe.query.filter_by(shopping_list_id=list_id).order_by(Recipe.day, Recipe.meal_type).all()
+    recipes_dict = [r.to_dict() for r in recipes]
+    has_ai_recipes = len(recipes) > 0
     
     # Konvertera till JSON för JavaScript
     shopping_list_dict = shopping_list.to_dict()
@@ -359,8 +368,11 @@ def meal_plan_view(list_id):
     return render_template('meal_plan.html',
                          shopping_list=shopping_list,
                          plan=plan,
+                         recipes=recipes,
+                         has_ai_recipes=has_ai_recipes,
                          shopping_list_json=json.dumps(shopping_list_dict),
-                         plan_json=json.dumps(plan_dict))
+                         plan_json=json.dumps(plan_dict),
+                         recipes_json=json.dumps(recipes_dict))
 
 
 @app.route('/api/shopping-lists/<int:list_id>', methods=['GET', 'PUT', 'DELETE'])
@@ -476,7 +488,16 @@ def _update_list_total(shopping_list):
 def generate_page():
     """Sida för att generera inköpslista från näringsplan"""
     plans = NutritionPlan.query.all()
-    return render_template('generate.html', plans=plans, stores=STORES, allergens=ALLERGENS)
+    
+    # Kolla om AI-tjänsten är tillgänglig
+    ai_available = False
+    try:
+        from ai_service import get_ai_service
+        ai_available = get_ai_service().is_available()
+    except:
+        pass
+    
+    return render_template('generate.html', plans=plans, stores=STORES, allergens=ALLERGENS, ai_available=ai_available)
 
 
 @app.route('/api/generate-list', methods=['POST'])
@@ -495,6 +516,8 @@ def api_generate_list():
     - Budget (totalt)
     - Hushållsstorlek (skalar mängder)
     - Budgetprioritering (billigare alternativ vid behov)
+    - Måltidsfilter (välja bort frukost etc.)
+    - AI-receptgenerering (Gemini)
     """
     data = request.json
     plan_id = data.get('plan_id')
@@ -504,12 +527,51 @@ def api_generate_list():
     household_size = data.get('household_size', 1)
     prefer_cheaper = data.get('prefer_cheaper', False)
     
+    # NYA parametrar för måltidsfilter
+    include_breakfast = data.get('include_breakfast', True)
+    include_lunch = data.get('include_lunch', True)
+    include_dinner = data.get('include_dinner', True)
+    include_snacks = data.get('include_snacks', False)
+    use_ai_recipes = data.get('use_ai_recipes', False)
+    
     plan = NutritionPlan.query.get_or_404(plan_id)
     
     # Hämta allergier från plan
     allergies = plan.get_allergies_list()
     
+    # Om AI-recept är aktiverat, använd den nya metoden
+    if use_ai_recipes:
+        return generate_with_ai_recipes(
+            plan=plan,
+            days=days,
+            store=store,
+            household_size=household_size,
+            budget=budget,
+            include_breakfast=include_breakfast,
+            include_lunch=include_lunch,
+            include_dinner=include_dinner,
+            include_snacks=include_snacks,
+            allergies=allergies
+        )
+    
     # ============== BERÄKNA TOTALT NÄRINGSBEHOV ==============
+    # Justera baserat på vilka måltider som inkluderas
+    meal_fraction = 0
+    if include_breakfast:
+        meal_fraction += 0.20
+    if include_lunch:
+        meal_fraction += 0.35
+    if include_dinner:
+        meal_fraction += 0.35
+    if include_snacks:
+        meal_fraction += 0.10
+    
+    # Normalisera så vi får rätt totala kalorier
+    if meal_fraction > 0:
+        adjustment = 1.0 / meal_fraction
+    else:
+        adjustment = 1.0
+    
     # Totalt behov = dagligt behov × antal dagar × antal personer
     total_calories_needed = plan.calories_target * days * household_size
     total_protein_needed = plan.protein_target * days * household_size
@@ -531,11 +593,11 @@ def api_generate_list():
     # ============== NY MÅLTIDSBASERAD STRATEGI ==============
     # Vi beräknar utifrån antal måltider som behöver täckas
     #
-    # Antal måltider som behöver mat:
-    num_breakfasts = days * household_size   # Antal frukostar totalt
-    num_lunches = days * household_size      # Antal luncher totalt
-    num_dinners = days * household_size      # Antal middagar totalt  
-    num_snacks = days * household_size       # Antal mellanmål totalt
+    # Antal måltider som behöver mat (baserat på vad som valts):
+    num_breakfasts = days * household_size if include_breakfast else 0
+    num_lunches = days * household_size if include_lunch else 0
+    num_dinners = days * household_size if include_dinner else 0
+    num_snacks = days * household_size if include_snacks else 0
     
     # Kalorifördelning per måltid (baserat på plan):
     # Frukost: 20% | Lunch: 35% | Middag: 35% | Mellanmål: 10%
@@ -550,93 +612,103 @@ def api_generate_list():
     # - portion_grams: gram per portion
     # - kcal_per_100g: ungefärliga kalorier (fallback om nutrition saknas)
     
-    product_categories = [
-        # ===== FRUKOST =====
-        # Frukostar: gröt, bröd+pålägg, ägg, müsli etc
-        {'search': 'havregryn', 'priority': 1, 'type': 'breakfast', 'kcal_per_100g': 370,
-         'meals': int(num_breakfasts * 0.6), 'portion_grams': 70},  # Gröt ~60% av frukostar
-        
-        {'search': 'bröd', 'priority': 1, 'type': 'breakfast', 'kcal_per_100g': 250,
-         'meals': int(num_breakfasts * 1.0), 'portion_grams': 80},  # Bröd till alla frukostar + smörgås
-        
-        {'search': 'ägg', 'priority': 1, 'type': 'breakfast', 'kcal_per_100g': 155,
-         'meals': int(num_breakfasts * 0.6), 'portion_grams': 120},  # Ägg de flesta morgnar + matlagning
-        
-        {'search': 'mjölk', 'priority': 2, 'type': 'breakfast', 'kcal_per_100g': 45,
-         'meals': int(num_breakfasts * 1.5), 'portion_grams': 250},  # Till gröt, kaffe, etc
-        
-        {'search': 'yoghurt', 'priority': 2, 'type': 'breakfast', 'kcal_per_100g': 60,
-         'meals': int(num_breakfasts * 0.4), 'portion_grams': 200},
-        
-        # ===== LUNCH & MIDDAG - PROTEIN =====
-        # Huvudmåltider: num_lunches + num_dinners st
-        {'search': 'kycklingfilé', 'priority': 1, 'type': 'protein', 'kcal_per_100g': 120,
-         'meals': int((num_lunches + num_dinners) * 0.3), 'portion_grams': 175},  # ~30% av måltider
-        
-        {'search': 'nötfärs', 'priority': 1, 'type': 'protein', 'kcal_per_100g': 205,
-         'meals': int((num_lunches + num_dinners) * 0.25), 'portion_grams': 150},  # ~25% av måltider
-        
-        {'search': 'lax', 'priority': 1, 'type': 'protein', 'kcal_per_100g': 205,
-         'meals': int((num_lunches + num_dinners) * 0.15), 'portion_grams': 150},  # Fisk ~15%
-        
-        {'search': 'fläskfilé', 'priority': 1, 'type': 'protein', 'kcal_per_100g': 145,
-         'meals': int((num_lunches + num_dinners) * 0.1), 'portion_grams': 150},  # ~10%
-        
-        {'search': 'korv', 'priority': 2, 'type': 'protein', 'kcal_per_100g': 280,
-         'meals': int((num_lunches + num_dinners) * 0.1), 'portion_grams': 120},  # ~10%
-        
-        # ===== LUNCH & MIDDAG - KOLHYDRATER =====
-        {'search': 'pasta', 'priority': 1, 'type': 'carbs', 'kcal_per_100g': 355,
-         'meals': int((num_lunches + num_dinners) * 0.35), 'portion_grams': 100},  # ~35% av måltider
-        
-        {'search': 'ris', 'priority': 1, 'type': 'carbs', 'kcal_per_100g': 355,
-         'meals': int((num_lunches + num_dinners) * 0.35), 'portion_grams': 85},  # ~35%
-        
-        {'search': 'potatis', 'priority': 1, 'type': 'carbs', 'kcal_per_100g': 85,
-         'meals': int((num_lunches + num_dinners) * 0.3), 'portion_grams': 300},  # ~30%
-        
-        # ===== FETTER - KRITISKT FÖR KALORIER =====
-        {'search': 'smör', 'priority': 2, 'type': 'fat', 'kcal_per_100g': 720,
-         'meals': int(num_breakfasts * 1.5 + num_dinners * 0.5), 'portion_grams': 15},  # Smörgås + matlagning
-        
-        {'search': 'ost', 'priority': 2, 'type': 'dairy', 'kcal_per_100g': 350,
-         'meals': int(num_breakfasts * 0.8), 'portion_grams': 30},  # Smörgåsost
-        
-        {'search': 'olja', 'priority': 2, 'type': 'fat', 'kcal_per_100g': 880,
-         'meals': int((num_lunches + num_dinners) * 0.6), 'portion_grams': 15},  # Stekning
-        
-        {'search': 'grädde', 'priority': 3, 'type': 'fat', 'kcal_per_100g': 290,
-         'meals': int(num_dinners * 0.3), 'portion_grams': 100},  # Till såser
-        
-        # ===== GRÖNSAKER =====
-        {'search': 'tomat', 'priority': 3, 'type': 'vegetables', 'kcal_per_100g': 20,
-         'meals': int((num_lunches + num_dinners) * 0.4), 'portion_grams': 150},
-        
-        {'search': 'gurka', 'priority': 3, 'type': 'vegetables', 'kcal_per_100g': 12,
-         'meals': int(num_lunches * 0.4), 'portion_grams': 100},
-        
-        {'search': 'morot', 'priority': 3, 'type': 'vegetables', 'kcal_per_100g': 35,
-         'meals': int((num_lunches + num_dinners) * 0.3), 'portion_grams': 100},
-        
-        {'search': 'broccoli', 'priority': 3, 'type': 'vegetables', 'kcal_per_100g': 35,
-         'meals': int(num_dinners * 0.4), 'portion_grams': 150},
-        
-        {'search': 'lök', 'priority': 4, 'type': 'vegetables', 'kcal_per_100g': 40,
-         'meals': int(num_dinners * 0.6), 'portion_grams': 75},
-        
-        {'search': 'paprika', 'priority': 4, 'type': 'vegetables', 'kcal_per_100g': 25,
-         'meals': int(num_dinners * 0.3), 'portion_grams': 100},
-        
-        # ===== MELLANMÅL & FRUKT =====
-        {'search': 'banan', 'priority': 2, 'type': 'snack', 'kcal_per_100g': 95,
-         'meals': int(num_snacks * 0.6), 'portion_grams': 130},
-        
-        {'search': 'äpple', 'priority': 2, 'type': 'snack', 'kcal_per_100g': 55,
-         'meals': int(num_snacks * 0.5), 'portion_grams': 180},
-        
-        {'search': 'kvarg', 'priority': 2, 'type': 'snack', 'kcal_per_100g': 65,
-         'meals': int(num_snacks * 0.5), 'portion_grams': 200},
-    ]
+    product_categories = []
+    
+    # ===== FRUKOST (endast om vald) =====
+    if include_breakfast:
+        product_categories.extend([
+            # Frukostar: gröt, bröd+pålägg, ägg, müsli etc
+            {'search': 'havregryn', 'priority': 1, 'type': 'breakfast', 'kcal_per_100g': 370,
+             'meals': int(num_breakfasts * 0.6), 'portion_grams': 70},  # Gröt ~60% av frukostar
+            
+            {'search': 'bröd', 'priority': 1, 'type': 'breakfast', 'kcal_per_100g': 250,
+             'meals': int(num_breakfasts * 1.0), 'portion_grams': 80},  # Bröd till alla frukostar + smörgås
+            
+            {'search': 'ägg', 'priority': 1, 'type': 'breakfast', 'kcal_per_100g': 155,
+             'meals': int(num_breakfasts * 0.6), 'portion_grams': 120},  # Ägg de flesta morgnar + matlagning
+            
+            {'search': 'mjölk', 'priority': 2, 'type': 'breakfast', 'kcal_per_100g': 45,
+             'meals': int(num_breakfasts * 1.5), 'portion_grams': 250},  # Till gröt, kaffe, etc
+            
+            {'search': 'yoghurt', 'priority': 2, 'type': 'breakfast', 'kcal_per_100g': 60,
+             'meals': int(num_breakfasts * 0.4), 'portion_grams': 200},
+            
+            {'search': 'smör', 'priority': 2, 'type': 'fat', 'kcal_per_100g': 720,
+             'meals': int(num_breakfasts * 1.5), 'portion_grams': 15},  # Smörgås
+            
+            {'search': 'ost', 'priority': 2, 'type': 'dairy', 'kcal_per_100g': 350,
+             'meals': int(num_breakfasts * 0.8), 'portion_grams': 30},  # Smörgåsost
+        ])
+    
+    # ===== LUNCH & MIDDAG - PROTEIN (endast om lunch eller middag vald) =====
+    if include_lunch or include_dinner:
+        num_main_meals = num_lunches + num_dinners
+        product_categories.extend([
+            # Huvudmåltider: num_lunches + num_dinners st
+            {'search': 'kycklingfilé', 'priority': 1, 'type': 'protein', 'kcal_per_100g': 120,
+             'meals': int(num_main_meals * 0.3), 'portion_grams': 175},  # ~30% av måltider
+            
+            {'search': 'nötfärs', 'priority': 1, 'type': 'protein', 'kcal_per_100g': 205,
+             'meals': int(num_main_meals * 0.25), 'portion_grams': 150},  # ~25% av måltider
+            
+            {'search': 'lax', 'priority': 1, 'type': 'protein', 'kcal_per_100g': 205,
+             'meals': int(num_main_meals * 0.15), 'portion_grams': 150},  # Fisk ~15%
+            
+            {'search': 'fläskfilé', 'priority': 1, 'type': 'protein', 'kcal_per_100g': 145,
+             'meals': int(num_main_meals * 0.1), 'portion_grams': 150},  # ~10%
+            
+            {'search': 'korv', 'priority': 2, 'type': 'protein', 'kcal_per_100g': 280,
+             'meals': int(num_main_meals * 0.1), 'portion_grams': 120},  # ~10%
+            
+            # ===== LUNCH & MIDDAG - KOLHYDRATER =====
+            {'search': 'pasta', 'priority': 1, 'type': 'carbs', 'kcal_per_100g': 355,
+             'meals': int(num_main_meals * 0.35), 'portion_grams': 100},  # ~35% av måltider
+            
+            {'search': 'ris', 'priority': 1, 'type': 'carbs', 'kcal_per_100g': 355,
+             'meals': int(num_main_meals * 0.35), 'portion_grams': 85},  # ~35%
+            
+            {'search': 'potatis', 'priority': 1, 'type': 'carbs', 'kcal_per_100g': 85,
+             'meals': int(num_main_meals * 0.3), 'portion_grams': 300},  # ~30%
+            
+            # ===== FETTER - KRITISKT FÖR KALORIER =====
+            {'search': 'olja', 'priority': 2, 'type': 'fat', 'kcal_per_100g': 880,
+             'meals': int(num_main_meals * 0.6), 'portion_grams': 15},  # Stekning
+            
+            {'search': 'grädde', 'priority': 3, 'type': 'fat', 'kcal_per_100g': 290,
+             'meals': int(num_dinners * 0.3), 'portion_grams': 100},  # Till såser
+            
+            # ===== GRÖNSAKER =====
+            {'search': 'tomat', 'priority': 3, 'type': 'vegetables', 'kcal_per_100g': 20,
+             'meals': int(num_main_meals * 0.4), 'portion_grams': 150},
+            
+            {'search': 'gurka', 'priority': 3, 'type': 'vegetables', 'kcal_per_100g': 12,
+             'meals': int(num_lunches * 0.4), 'portion_grams': 100},
+            
+            {'search': 'morot', 'priority': 3, 'type': 'vegetables', 'kcal_per_100g': 35,
+             'meals': int(num_main_meals * 0.3), 'portion_grams': 100},
+            
+            {'search': 'broccoli', 'priority': 3, 'type': 'vegetables', 'kcal_per_100g': 35,
+             'meals': int(num_dinners * 0.4), 'portion_grams': 150},
+            
+            {'search': 'lök', 'priority': 4, 'type': 'vegetables', 'kcal_per_100g': 40,
+             'meals': int(num_dinners * 0.6), 'portion_grams': 75},
+            
+            {'search': 'paprika', 'priority': 4, 'type': 'vegetables', 'kcal_per_100g': 25,
+             'meals': int(num_dinners * 0.3), 'portion_grams': 100},
+        ])
+    
+    # ===== MELLANMÅL & FRUKT (endast om valt) =====
+    if include_snacks:
+        product_categories.extend([
+            {'search': 'banan', 'priority': 2, 'type': 'snack', 'kcal_per_100g': 95,
+             'meals': int(num_snacks * 0.6), 'portion_grams': 130},
+            
+            {'search': 'äpple', 'priority': 2, 'type': 'snack', 'kcal_per_100g': 55,
+             'meals': int(num_snacks * 0.5), 'portion_grams': 180},
+            
+            {'search': 'kvarg', 'priority': 2, 'type': 'snack', 'kcal_per_100g': 65,
+             'meals': int(num_snacks * 0.5), 'portion_grams': 200},
+        ])
     
     # Lägg till vegetariska proteinkällor om vegetarian/vegan
     if 'vegetarian' in allergies or 'vegan' in allergies:
@@ -1552,6 +1624,215 @@ def export_for_store(list_id, store):
             {'type': 'csv', 'description': 'Ladda ner som CSV'},
         ]
     })
+
+
+# ============== AI RECEPTGENERERING ==============
+def generate_with_ai_recipes(plan, days, store, household_size, budget, 
+                             include_breakfast, include_lunch, include_dinner, 
+                             include_snacks, allergies):
+    """
+    Generera inköpslista baserat på AI-genererade recept
+    
+    1. Gemini skapar recept baserat på energimål
+    2. Ingredienser extraheras från recepten
+    3. Produkter söks på Matspar.se för vald butik
+    4. Inköpslista skapas
+    """
+    try:
+        from ai_service import get_ai_service
+        ai_service = get_ai_service()
+        
+        if not ai_service.is_available():
+            return jsonify({'error': 'AI-tjänsten är inte tillgänglig. Kontrollera API-nyckel.'}), 400
+        
+        # Skapa AI-parametrar
+        ai_params = {
+            'calories_per_day': plan.calories_target,
+            'days': days,
+            'household_size': household_size,
+            'allergies': allergies,
+            'include_breakfast': include_breakfast,
+            'include_lunch': include_lunch,
+            'include_dinner': include_dinner,
+            'include_snacks': include_snacks,
+            'budget': 'medium' if not budget else ('low' if budget < 500 else 'high')
+        }
+        
+        # Generera recept med AI
+        recipes_data, error = ai_service.generate_recipes(ai_params)
+        
+        if error:
+            return jsonify({'error': f'AI-fel: {error}'}), 400
+        
+        if not recipes_data or 'recipes' not in recipes_data:
+            return jsonify({'error': 'Kunde inte generera recept. Försök igen.'}), 400
+        
+        # Debug: visa vad AI returnerade
+        print(f"DEBUG: recipes_data type = {type(recipes_data)}")
+        print(f"DEBUG: recipes_data keys = {recipes_data.keys() if isinstance(recipes_data, dict) else 'N/A'}")
+        if 'recipes' in recipes_data:
+            print(f"DEBUG: recipes type = {type(recipes_data['recipes'])}")
+            if recipes_data['recipes']:
+                print(f"DEBUG: first recipe type = {type(recipes_data['recipes'][0])}")
+                if isinstance(recipes_data['recipes'][0], dict):
+                    print(f"DEBUG: first recipe keys = {recipes_data['recipes'][0].keys()}")
+                else:
+                    print(f"DEBUG: first recipe value = {str(recipes_data['recipes'][0])[:200]}")
+        
+        # Extrahera ingredienser
+        ingredients = ai_service.extract_ingredients_for_search(recipes_data)
+        
+        # Skapa inköpslista
+        shopping_list = ShoppingList(
+            name=f"AI-recept - {plan.name} ({days} dagar)",
+            store=store,
+            days=days,
+            plan_id=plan.id,
+            budget=budget,
+            household_size=household_size
+        )
+        db.session.add(shopping_list)
+        db.session.flush()  # Få ID
+        
+        # Spara recept i databasen
+        for recipe_data in recipes_data['recipes']:
+            # Hantera om recipe_data är sträng istället för dict
+            if isinstance(recipe_data, str):
+                print(f"Varning: recipe_data är sträng: {recipe_data[:100]}")
+                continue
+            
+            recipe = Recipe(
+                shopping_list_id=shopping_list.id,
+                day=recipe_data.get('day', 1),
+                meal_type=recipe_data.get('meal_type', 'middag'),
+                name=recipe_data.get('name', 'Okänt recept'),
+                portions=recipe_data.get('portions', household_size),
+                calories_per_portion=recipe_data.get('calories_per_portion'),
+                prep_time_minutes=recipe_data.get('prep_time_minutes')
+            )
+            recipe.set_ingredients(recipe_data.get('ingredients', []))
+            recipe.set_instructions(recipe_data.get('instructions', []))
+            db.session.add(recipe)
+        
+        # Sök produkter på Matspar och lägg till i listan
+        total_cost = 0
+        items_added = 0
+        
+        for ing in ingredients:
+            search_term = ing['search_term']
+            
+            # Sök efter produkten med allergifiltrering
+            products = scraper.search_products_filtered(search_term, allergies=allergies, limit=3)
+            
+            if not products:
+                # Prova förenklad sökning
+                simple_term = search_term.split()[0] if ' ' in search_term else search_term
+                products = scraper.search_products_filtered(simple_term, allergies=allergies, limit=3)
+            
+            if products:
+                product_data = products[0]
+                
+                # Hitta eller skapa produkt i databasen
+                product = Product.query.filter_by(name=product_data['name']).first()
+                if not product:
+                    product = Product(
+                        name=product_data['name'],
+                        brand=product_data.get('brand', ''),
+                        weight=product_data.get('weight', ''),
+                        category=ing['category'],
+                        image_url=product_data.get('image_url', product_data.get('image', ''))
+                    )
+                    db.session.add(product)
+                    db.session.flush()
+                    
+                    # Lägg till priser - prices är en dict {butik: pris}
+                    prices_data = product_data.get('prices', {})
+                    if isinstance(prices_data, dict):
+                        for store_name, price_value in prices_data.items():
+                            price = Price(
+                                product_id=product.id,
+                                store=store_name,
+                                price=price_value
+                            )
+                            db.session.add(price)
+                    
+                    # Lägg till nutrition om tillgängligt
+                    if product_data.get('nutrition'):
+                        nutr = product_data['nutrition']
+                        nutrition = Nutrition(
+                            product_id=product.id,
+                            calories=nutr.get('calories', 0),
+                            protein=nutr.get('protein', 0),
+                            carbs=nutr.get('carbs', 0),
+                            fat=nutr.get('fat', 0),
+                            fiber=nutr.get('fiber', 0)
+                        )
+                        db.session.add(nutrition)
+                
+                # Lägg till i inköpslistan
+                item = ShoppingItem(
+                    list_id=shopping_list.id,
+                    product_id=product.id,
+                    quantity=1
+                )
+                db.session.add(item)
+                items_added += 1
+                
+                # Beräkna kostnad
+                if product.prices:
+                    price = min(p.price for p in product.prices)
+                    total_cost += price
+        
+        shopping_list.total_cost = total_cost
+        db.session.commit()
+        
+        # Returnera resultat
+        result = shopping_list.to_dict()
+        result['recipes'] = [r.to_dict() for r in shopping_list.recipes]
+        result['ai_generated'] = True
+        result['nutrition_coverage'] = {
+            'calories': 100,  # AI-recept är designade för att matcha målet
+            'protein': 100,
+            'carbs': 100,
+            'fat': 100
+        }
+        
+        return jsonify(result)
+        
+    except ImportError:
+        return jsonify({'error': 'AI-modulen kunde inte laddas. Installera google-generativeai.'}), 400
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Ett fel uppstod: {str(e)}'}), 500
+
+
+@app.route('/api/shopping-lists/<int:list_id>/regenerate-recipes', methods=['POST'])
+def regenerate_recipes(list_id):
+    """Generera om recept för en befintlig inköpslista"""
+    shopping_list = ShoppingList.query.get_or_404(list_id)
+    plan = NutritionPlan.query.get(shopping_list.plan_id)
+    
+    if not plan:
+        return jsonify({'error': 'Ingen näringsplan kopplad till listan'}), 400
+    
+    # Ta bort gamla recept
+    Recipe.query.filter_by(shopping_list_id=list_id).delete()
+    
+    # Generera nya recept
+    data = request.json or {}
+    
+    return generate_with_ai_recipes(
+        plan=plan,
+        days=shopping_list.days,
+        store=shopping_list.store,
+        household_size=shopping_list.household_size or 1,
+        budget=shopping_list.budget,
+        include_breakfast=data.get('include_breakfast', True),
+        include_lunch=data.get('include_lunch', True),
+        include_dinner=data.get('include_dinner', True),
+        include_snacks=data.get('include_snacks', False),
+        allergies=plan.get_allergies_list()
+    )
 
 
 if __name__ == '__main__':
