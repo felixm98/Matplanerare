@@ -19,35 +19,164 @@
                             <input type="text" class="form-control" name="name" value="Min näringsplan" required>
                         </div>
                         
+                        <!-- ALLERGIER & INTOLERANSER -->
+                        <div class="mb-4">
+                            <h6 class="text-muted mb-3">
+                                <i class="bi bi-shield-exclamation me-2"></i>Allergier & Kostrestriktioner
+                            </h6>
+                            <p class="text-muted small mb-3">
+                                Välj dina allergier/intoleranser. Generatorn kommer aldrig föreslå produkter som bryter mot dessa.
+                            </p>
+                            <div class="row g-2">
+                                {% for key, allergy in allergens.items() %}
+                                <div class="col-md-6 col-lg-4">
+                                    <div class="form-check allergy-check">
+                                        <input class="form-check-input" type="checkbox" name="allergies" 
+                                               value="{{ key }}" id="allergy_{{ key }}">
+                                        <label class="form-check-label" for="allergy_{{ key }}">
+                                            <span class="me-1">{{ allergy.icon }}</span>
+                                            {{ allergy.name }}
+                                            <small class="text-muted d-block">{{ allergy.description }}</small>
+                                        </label>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        
+                        <hr class="my-4">
+                        
                         <h6 class="text-muted mb-3">
                             <i class="bi bi-fire me-2"></i>Makronäringsämnen (per dag)
                         </h6>
                         
+                        <div class="alert alert-info small mb-3">
+                            <i class="bi bi-info-circle me-2"></i>
+                            <strong>Om mållägen:</strong> 
+                            <span class="badge bg-secondary">Mål</span> = försök uppnå detta värde,
+                            <span class="badge bg-success">Min</span> = minst detta värde,
+                            <span class="badge bg-warning text-dark">Max</span> = högst detta värde,
+                            <span class="badge bg-light text-dark">Ignorera</span> = ingen preferens
+                            <br><small class="text-muted mt-1 d-block">
+                                ⚠️ Att sätta 0 som exakt mål fungerar oftast inte då nästan alla livsmedel innehåller naturligt små mängder av näringsämnen.
+                                Använd "Max" med lågt värde eller "Ignorera" istället.
+                            </small>
+                        </div>
+                        
                         <div class="row g-3 mb-4">
                             <div class="col-md-6">
-                                <label class="form-label">Kalorier (kcal)</label>
-                                <input type="number" class="form-control" name="calories" value="2000" min="1000" max="5000">
-                                <small class="text-muted">Rekommenderat: 2000-2500 kcal</small>
+                                <label class="form-label d-flex align-items-center">
+                                    Kalorier (kcal)
+                                    <span class="ms-auto badge bg-light text-dark rdi-badge" 
+                                          data-bs-toggle="tooltip" 
+                                          title="RDI: {{ rdi_values.calories.value }} {{ rdi_values.calories.unit }} - {{ rdi_values.calories.description }}">
+                                        <i class="bi bi-info-circle"></i> RDI: {{ rdi_values.calories.value }}
+                                    </span>
+                                </label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" name="calories" value="2000" min="0" max="5000">
+                                    <select class="form-select" name="calories_mode" style="max-width: 110px;">
+                                        <option value="target" selected>Mål</option>
+                                        <option value="min">Min</option>
+                                        <option value="max">Max</option>
+                                        <option value="ignore">Ignorera</option>
+                                    </select>
+                                </div>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Protein (g)</label>
-                                <input type="number" class="form-control" name="protein" value="50" min="20" max="300">
-                                <small class="text-muted">Rekommenderat: 50-100 g</small>
+                                <label class="form-label d-flex align-items-center">
+                                    Protein (g)
+                                    <span class="ms-auto badge bg-light text-dark rdi-badge"
+                                          data-bs-toggle="tooltip"
+                                          title="RDI: {{ rdi_values.protein.value }} {{ rdi_values.protein.unit }} - {{ rdi_values.protein.description }}">
+                                        <i class="bi bi-info-circle"></i> RDI: {{ rdi_values.protein.value }}
+                                    </span>
+                                </label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" name="protein" value="60" min="0" max="300">
+                                    <select class="form-select" name="protein_mode" style="max-width: 110px;">
+                                        <option value="target">Mål</option>
+                                        <option value="min" selected>Min</option>
+                                        <option value="max">Max</option>
+                                        <option value="ignore">Ignorera</option>
+                                    </select>
+                                </div>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Kolhydrater (g)</label>
-                                <input type="number" class="form-control" name="carbs" value="250" min="50" max="500">
-                                <small class="text-muted">Rekommenderat: 225-325 g</small>
+                                <label class="form-label d-flex align-items-center">
+                                    Kolhydrater (g)
+                                    <span class="ms-auto badge bg-light text-dark rdi-badge"
+                                          data-bs-toggle="tooltip"
+                                          title="RDI: {{ rdi_values.carbs.value }} {{ rdi_values.carbs.unit }} - {{ rdi_values.carbs.description }}">
+                                        <i class="bi bi-info-circle"></i> RDI: {{ rdi_values.carbs.value }}
+                                    </span>
+                                </label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" name="carbs" value="280" min="0" max="500">
+                                    <select class="form-select" name="carbs_mode" style="max-width: 110px;">
+                                        <option value="target" selected>Mål</option>
+                                        <option value="min">Min</option>
+                                        <option value="max">Max</option>
+                                        <option value="ignore">Ignorera</option>
+                                    </select>
+                                </div>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Fett (g)</label>
-                                <input type="number" class="form-control" name="fat" value="65" min="20" max="200">
-                                <small class="text-muted">Rekommenderat: 44-78 g</small>
+                                <label class="form-label d-flex align-items-center">
+                                    Fett (g)
+                                    <span class="ms-auto badge bg-light text-dark rdi-badge"
+                                          data-bs-toggle="tooltip"
+                                          title="RDI: {{ rdi_values.fat.value }} {{ rdi_values.fat.unit }} - {{ rdi_values.fat.description }}">
+                                        <i class="bi bi-info-circle"></i> RDI: {{ rdi_values.fat.value }}
+                                    </span>
+                                </label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" name="fat" value="70" min="0" max="200">
+                                    <select class="form-select" name="fat_mode" style="max-width: 110px;">
+                                        <option value="target">Mål</option>
+                                        <option value="min">Min</option>
+                                        <option value="max" selected>Max</option>
+                                        <option value="ignore">Ignorera</option>
+                                    </select>
+                                </div>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Fiber (g)</label>
-                                <input type="number" class="form-control" name="fiber" value="30" min="10" max="60">
-                                <small class="text-muted">Rekommenderat: 25-35 g</small>
+                                <label class="form-label d-flex align-items-center">
+                                    Fiber (g)
+                                    <span class="ms-auto badge bg-light text-dark rdi-badge"
+                                          data-bs-toggle="tooltip"
+                                          title="RDI: {{ rdi_values.fiber.value }} {{ rdi_values.fiber.unit }} - {{ rdi_values.fiber.description }}">
+                                        <i class="bi bi-info-circle"></i> RDI: {{ rdi_values.fiber.value }}
+                                    </span>
+                                </label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" name="fiber" value="30" min="0" max="60">
+                                    <select class="form-select" name="fiber_mode" style="max-width: 110px;">
+                                        <option value="target">Mål</option>
+                                        <option value="min" selected>Min</option>
+                                        <option value="max">Max</option>
+                                        <option value="ignore">Ignorera</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label d-flex align-items-center">
+                                    Socker (g)
+                                    <span class="ms-auto badge bg-light text-dark rdi-badge"
+                                          data-bs-toggle="tooltip"
+                                          title="RDI: {{ rdi_values.sugar.value }} {{ rdi_values.sugar.unit }} - {{ rdi_values.sugar.description }}">
+                                        <i class="bi bi-info-circle"></i> Max: {{ rdi_values.sugar.value }}
+                                    </span>
+                                </label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" name="sugar" value="50" min="0" max="200">
+                                    <select class="form-select" name="sugar_mode" style="max-width: 110px;">
+                                        <option value="target">Mål</option>
+                                        <option value="min">Min</option>
+                                        <option value="max" selected>Max</option>
+                                        <option value="ignore">Ignorera</option>
+                                    </select>
+                                </div>
                             </div>
                         </div>
 
@@ -55,59 +184,92 @@
                             <i class="bi bi-capsule me-2"></i>Vitaminer & Mineraler (per dag)
                         </h6>
                         
-                        <div class="alert alert-info small mb-3">
-                            <i class="bi bi-lightbulb me-2"></i>
-                            <strong>Tips:</strong> Öka dessa värden för att få fler grönsaker och frukter i din inköpslista!
+                        <div class="alert alert-warning small mb-3">
+                            <i class="bi bi-exclamation-triangle me-2"></i>
+                            <strong>Disclaimer:</strong> Näringsvärdena nedan är generella riktlinjer för friska vuxna, 
+                            <strong>ej medicinska råd</strong>. Individuella behov kan variera. Konsultera läkare/dietist vid specifika behov.
                         </div>
                         
                         <div class="row g-3 mb-4">
                             <div class="col-md-6">
-                                <label class="form-label">
+                                <label class="form-label d-flex align-items-center">
                                     Vitamin C (mg)
-                                    <span class="badge bg-success ms-1" title="Finns i: paprika, broccoli, apelsin, tomat">🥦🍊</span>
+                                    <span class="badge bg-success ms-1">🥦🍊</span>
+                                    <span class="ms-auto badge bg-light text-dark rdi-badge"
+                                          data-bs-toggle="tooltip"
+                                          title="{{ rdi_values.vitamin_c.description }}">
+                                        <i class="bi bi-info-circle"></i> RDI: {{ rdi_values.vitamin_c.value }}
+                                    </span>
                                 </label>
-                                <input type="number" class="form-control" name="vitamin_c" value="75" min="10" max="2000">
-                                <small class="text-muted">Bra källor: paprika, broccoli, citrusfrukter</small>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" name="vitamin_c" value="80" min="0" max="2000">
+                                    <select class="form-select" name="vitamin_c_mode" style="max-width: 110px;">
+                                        <option value="target">Mål</option>
+                                        <option value="min" selected>Min</option>
+                                        <option value="max">Max</option>
+                                        <option value="ignore">Ignorera</option>
+                                    </select>
+                                </div>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">
+                                <label class="form-label d-flex align-items-center">
                                     Vitamin D (µg)
-                                    <span class="badge bg-primary ms-1" title="Finns i: lax, ägg">🐟🥚</span>
+                                    <span class="badge bg-primary ms-1">🐟🥚</span>
+                                    <span class="ms-auto badge bg-light text-dark rdi-badge"
+                                          data-bs-toggle="tooltip"
+                                          title="{{ rdi_values.vitamin_d.description }}">
+                                        <i class="bi bi-info-circle"></i> RDI: {{ rdi_values.vitamin_d.value }}
+                                    </span>
                                 </label>
-                                <input type="number" class="form-control" name="vitamin_d" value="10" min="1" max="100">
-                                <small class="text-muted">Bra källor: fet fisk, ägg, berikade produkter</small>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" name="vitamin_d" value="15" min="0" max="100">
+                                    <select class="form-select" name="vitamin_d_mode" style="max-width: 110px;">
+                                        <option value="target">Mål</option>
+                                        <option value="min" selected>Min</option>
+                                        <option value="max">Max</option>
+                                        <option value="ignore">Ignorera</option>
+                                    </select>
+                                </div>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">
-                                    Vitamin A (µg)
-                                    <span class="badge bg-warning text-dark ms-1" title="Finns i: morot">🥕</span>
-                                </label>
-                                <input type="number" class="form-control" name="vitamin_a" value="800" min="100" max="3000">
-                                <small class="text-muted">Bra källor: morötter, spenat, sötpotatis</small>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">
+                                <label class="form-label d-flex align-items-center">
                                     Kalcium (mg)
-                                    <span class="badge bg-light text-dark ms-1" title="Finns i: mjölk, ost, yoghurt">🥛🧀</span>
+                                    <span class="badge bg-light text-dark ms-1">🥛🧀</span>
+                                    <span class="ms-auto badge bg-light text-dark rdi-badge"
+                                          data-bs-toggle="tooltip"
+                                          title="{{ rdi_values.calcium.description }}">
+                                        <i class="bi bi-info-circle"></i> RDI: {{ rdi_values.calcium.value }}
+                                    </span>
                                 </label>
-                                <input type="number" class="form-control" name="calcium" value="800" min="100" max="2500">
-                                <small class="text-muted">Bra källor: mejeriprodukter, tofu, broccoli</small>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" name="calcium" value="900" min="0" max="2500">
+                                    <select class="form-select" name="calcium_mode" style="max-width: 110px;">
+                                        <option value="target">Mål</option>
+                                        <option value="min" selected>Min</option>
+                                        <option value="max">Max</option>
+                                        <option value="ignore">Ignorera</option>
+                                    </select>
+                                </div>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">
+                                <label class="form-label d-flex align-items-center">
                                     Järn (mg)
-                                    <span class="badge bg-danger ms-1" title="Finns i: nötfärs, linser, spenat">🥩🫘</span>
+                                    <span class="badge bg-danger ms-1">🥩🫘</span>
+                                    <span class="ms-auto badge bg-light text-dark rdi-badge"
+                                          data-bs-toggle="tooltip"
+                                          title="{{ rdi_values.iron.description }}">
+                                        <i class="bi bi-info-circle"></i> RDI: {{ rdi_values.iron.value }}
+                                    </span>
                                 </label>
-                                <input type="number" class="form-control" name="iron" value="15" min="5" max="50">
-                                <small class="text-muted">Bra källor: rött kött, linser, baljväxter, spenat</small>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">
-                                    Kalium (mg)
-                                    <span class="badge bg-secondary ms-1" title="Finns i: banan, potatis, avokado">🍌🥔</span>
-                                </label>
-                                <input type="number" class="form-control" name="potassium" value="3500" min="1000" max="5000">
-                                <small class="text-muted">Bra källor: bananer, potatis, avokado</small>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" name="iron" value="12" min="0" max="50">
+                                    <select class="form-select" name="iron_mode" style="max-width: 110px;">
+                                        <option value="target">Mål</option>
+                                        <option value="min" selected>Min</option>
+                                        <option value="max">Max</option>
+                                        <option value="ignore">Ignorera</option>
+                                    </select>
+                                </div>
                             </div>
                         </div>
 
@@ -135,6 +297,14 @@
                                     <strong>{{ plan.name }}</strong>
                                     <br>
                                     <small class="text-muted">{{ plan.calories_target }} kcal/dag</small>
+                                    {% if plan.get_allergies_list() %}
+                                    <br><small class="text-info">
+                                        {% for allergy in plan.get_allergies_list()[:3] %}
+                                        {{ allergens.get(allergy, {}).get('icon', '🚫') }}
+                                        {% endfor %}
+                                        {% if plan.get_allergies_list()|length > 3 %}+{{ plan.get_allergies_list()|length - 3 }}{% endif %}
+                                    </small>
+                                    {% endif %}
                                 </div>
                                 <div>
                                     <button class="btn btn-sm btn-outline-danger" onclick="deletePlan({{ plan.id }})">
@@ -168,8 +338,11 @@
                     <button class="btn btn-outline-secondary btn-sm w-100 mb-2" onclick="loadPreset('muscle')">
                         Muskelbyggande (2500 kcal)
                     </button>
-                    <button class="btn btn-outline-secondary btn-sm w-100" onclick="loadPreset('lowcarb')">
+                    <button class="btn btn-outline-secondary btn-sm w-100 mb-2" onclick="loadPreset('lowcarb')">
                         Lågkolhydrat
+                    </button>
+                    <button class="btn btn-outline-success btn-sm w-100" onclick="loadPreset('vegetarian')">
+                        🥬 Vegetarisk
                     </button>
                 </div>
             </div>
@@ -178,13 +351,76 @@
 </div>
 {% endblock %}
 
+{% block extra_css %}
+<style>
+.allergy-check {
+    padding: 10px;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    transition: all 0.2s;
+}
+.allergy-check:hover {
+    background-color: #f8f9fa;
+}
+.allergy-check input:checked + label {
+    color: #dc3545;
+    font-weight: 500;
+}
+.allergy-check:has(input:checked) {
+    border-color: #dc3545;
+    background-color: #fff5f5;
+}
+.rdi-badge {
+    cursor: help;
+    font-size: 0.75rem;
+}
+</style>
+{% endblock %}
+
 {% block extra_js %}
 <script>
+// Aktivera tooltips
+var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+    return new bootstrap.Tooltip(tooltipTriggerEl)
+});
+
 const presets = {
-    standard: { name: 'Standard', calories: 2000, protein: 50, carbs: 250, fat: 65, fiber: 30 },
-    weightloss: { name: 'Viktminskning', calories: 1500, protein: 75, carbs: 150, fat: 50, fiber: 35 },
-    muscle: { name: 'Muskelbyggande', calories: 2500, protein: 150, carbs: 300, fat: 70, fiber: 30 },
-    lowcarb: { name: 'Lågkolhydrat', calories: 1800, protein: 100, carbs: 50, fat: 120, fiber: 25 }
+    standard: { 
+        name: 'Standard', 
+        calories: 2000, protein: 60, carbs: 280, fat: 70, fiber: 30, sugar: 50,
+        calories_mode: 'target', protein_mode: 'min', carbs_mode: 'target', 
+        fat_mode: 'max', fiber_mode: 'min', sugar_mode: 'max',
+        allergies: []
+    },
+    weightloss: { 
+        name: 'Viktminskning', 
+        calories: 1500, protein: 80, carbs: 150, fat: 50, fiber: 35, sugar: 30,
+        calories_mode: 'max', protein_mode: 'min', carbs_mode: 'max', 
+        fat_mode: 'max', fiber_mode: 'min', sugar_mode: 'max',
+        allergies: []
+    },
+    muscle: { 
+        name: 'Muskelbyggande', 
+        calories: 2500, protein: 150, carbs: 300, fat: 80, fiber: 30, sugar: 60,
+        calories_mode: 'min', protein_mode: 'min', carbs_mode: 'target', 
+        fat_mode: 'target', fiber_mode: 'min', sugar_mode: 'max',
+        allergies: []
+    },
+    lowcarb: { 
+        name: 'Lågkolhydrat', 
+        calories: 1800, protein: 100, carbs: 50, fat: 120, fiber: 25, sugar: 20,
+        calories_mode: 'target', protein_mode: 'min', carbs_mode: 'max', 
+        fat_mode: 'target', fiber_mode: 'min', sugar_mode: 'max',
+        allergies: []
+    },
+    vegetarian: { 
+        name: 'Vegetarisk', 
+        calories: 2000, protein: 55, carbs: 300, fat: 65, fiber: 35, sugar: 50,
+        calories_mode: 'target', protein_mode: 'min', carbs_mode: 'target', 
+        fat_mode: 'max', fiber_mode: 'min', sugar_mode: 'max',
+        allergies: ['vegetarian']
+    }
 };
 
 function loadPreset(preset) {
@@ -195,24 +431,57 @@ function loadPreset(preset) {
     document.querySelector('[name="carbs"]').value = p.carbs;
     document.querySelector('[name="fat"]').value = p.fat;
     document.querySelector('[name="fiber"]').value = p.fiber;
+    document.querySelector('[name="sugar"]').value = p.sugar;
+    
+    // Sätt modes
+    if (p.calories_mode) document.querySelector('[name="calories_mode"]').value = p.calories_mode;
+    if (p.protein_mode) document.querySelector('[name="protein_mode"]').value = p.protein_mode;
+    if (p.carbs_mode) document.querySelector('[name="carbs_mode"]').value = p.carbs_mode;
+    if (p.fat_mode) document.querySelector('[name="fat_mode"]').value = p.fat_mode;
+    if (p.fiber_mode) document.querySelector('[name="fiber_mode"]').value = p.fiber_mode;
+    if (p.sugar_mode) document.querySelector('[name="sugar_mode"]').value = p.sugar_mode;
+    
+    // Sätt allergier
+    document.querySelectorAll('[name="allergies"]').forEach(cb => {
+        cb.checked = p.allergies && p.allergies.includes(cb.value);
+    });
 }
 
 document.getElementById('planForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     
     const formData = new FormData(e.target);
-    const data = Object.fromEntries(formData);
     
-    // Konvertera till rätt typer
-    data.calories = parseInt(data.calories);
-    data.protein = parseInt(data.protein);
-    data.carbs = parseInt(data.carbs);
-    data.fat = parseInt(data.fat);
-    data.fiber = parseInt(data.fiber);
-    data.vitamin_c = parseInt(data.vitamin_c);
-    data.vitamin_d = parseInt(data.vitamin_d);
-    data.calcium = parseInt(data.calcium);
-    data.iron = parseInt(data.iron);
+    // Samla allergier
+    const allergies = [];
+    document.querySelectorAll('[name="allergies"]:checked').forEach(cb => {
+        allergies.push(cb.value);
+    });
+    
+    const data = {
+        name: formData.get('name'),
+        allergies: allergies,
+        calories: parseInt(formData.get('calories')),
+        protein: parseInt(formData.get('protein')),
+        carbs: parseInt(formData.get('carbs')),
+        fat: parseInt(formData.get('fat')),
+        fiber: parseInt(formData.get('fiber')),
+        sugar: parseInt(formData.get('sugar')),
+        calories_mode: formData.get('calories_mode'),
+        protein_mode: formData.get('protein_mode'),
+        carbs_mode: formData.get('carbs_mode'),
+        fat_mode: formData.get('fat_mode'),
+        fiber_mode: formData.get('fiber_mode'),
+        sugar_mode: formData.get('sugar_mode'),
+        vitamin_c: parseInt(formData.get('vitamin_c')),
+        vitamin_d: parseInt(formData.get('vitamin_d')),
+        calcium: parseInt(formData.get('calcium')),
+        iron: parseInt(formData.get('iron')),
+        vitamin_c_mode: formData.get('vitamin_c_mode'),
+        vitamin_d_mode: formData.get('vitamin_d_mode'),
+        calcium_mode: formData.get('calcium_mode'),
+        iron_mode: formData.get('iron_mode')
+    };
     
     const response = await fetch('/api/plans', {
         method: 'POST',

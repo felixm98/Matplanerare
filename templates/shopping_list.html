@@ -54,6 +54,7 @@
                                 <small class="text-muted">
                                     {{ list.items|length }} varor
                                     {% if list.store %} · {{ list.store }}{% endif %}
+                                    {% if list.household_size and list.household_size > 1 %} · {{ list.household_size }} pers{% endif %}
                                 </small>
                             </div>
                             <div>
@@ -85,7 +86,21 @@
                         <a href="#" id="mealPlanBtn" class="btn btn-sm btn-warning me-2" title="Visa måltidsplan">
                             <i class="bi bi-calendar-week"></i> Måltider
                         </a>
-                        <button class="btn btn-sm btn-outline-danger" onclick="deleteCurrentList()">
+                        <div class="btn-group">
+                            <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                                <i class="bi bi-share"></i> Exportera
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li><a class="dropdown-item" href="#" onclick="exportList('csv')"><i class="bi bi-file-earmark-csv me-2"></i>CSV-fil</a></li>
+                                <li><a class="dropdown-item" href="#" onclick="exportList('text')"><i class="bi bi-clipboard me-2"></i>Kopiera text</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li class="dropdown-header">Butiks-format</li>
+                                <li><a class="dropdown-item" href="#" onclick="exportList('store/ica')"><span style="color: #e91e63;">●</span> ICA</a></li>
+                                <li><a class="dropdown-item" href="#" onclick="exportList('store/coop')"><span style="color: #00a651;">●</span> Coop</a></li>
+                                <li><a class="dropdown-item" href="#" onclick="exportList('store/willys')"><span style="color: #e30613;">●</span> Willys</a></li>
+                            </ul>
+                        </div>
+                        <button class="btn btn-sm btn-outline-danger ms-2" onclick="deleteCurrentList()">
                             <i class="bi bi-trash"></i>
                         </button>
                     </div>
@@ -102,6 +117,7 @@
                             <div class="d-flex justify-content-between align-items-center">
                                 <div>
                                     <strong><i class="bi bi-cash-stack me-2"></i>Total kostnad:</strong>
+                                    <span id="costPerPerson" class="ms-2 text-muted small"></span>
                                 </div>
                                 <div class="h3 mb-0 text-success fw-bold" id="totalCost">0 kr</div>
                             </div>
@@ -115,11 +131,107 @@
         </div>
     </div>
 </div>
+
+<!-- Substitution Modal -->
+<div class="modal fade" id="substituteModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-arrow-left-right me-2"></i>Byt ut produkt
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="currentProduct" class="alert alert-secondary mb-3"></div>
+                
+                <!-- Nav tabs for single vs combined -->
+                <ul class="nav nav-tabs mb-3" id="substituteTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="single-tab" data-bs-toggle="tab" data-bs-target="#singleAlternatives" type="button">
+                            <i class="bi bi-box me-1"></i>Enskilda produkter
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="combined-tab" data-bs-toggle="tab" data-bs-target="#combinedAlternatives" type="button">
+                            <i class="bi bi-boxes me-1"></i>Kombinerade ersättningar
+                        </button>
+                    </li>
+                </ul>
+                
+                <div class="tab-content">
+                    <!-- Single alternatives -->
+                    <div class="tab-pane fade show active" id="singleAlternatives" role="tabpanel">
+                        <div id="alternativesList" class="list-group">
+                            <div class="text-center py-3">
+                                <div class="spinner-border spinner-border-sm" role="status"></div>
+                                Söker alternativ...
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Combined alternatives -->
+                    <div class="tab-pane fade" id="combinedAlternatives" role="tabpanel">
+                        <div class="alert alert-info small mb-3">
+                            <i class="bi bi-info-circle me-2"></i>
+                            Kombinerade ersättningar: Ersätt med flera mindre produkter som tillsammans matchar originalet.
+                        </div>
+                        <div id="combinedList" class="list-group">
+                            <div class="text-center py-3 text-muted">Inga kombinerade alternativ</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Export Modal för butiker -->
+<div class="modal fade" id="exportModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-share me-2"></i>Exportera till <span id="exportStoreName">butik</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info small">
+                    <i class="bi bi-info-circle me-2"></i>
+                    <span id="exportInstruction">Klicka på en vara för att kopiera den, sedan klistra in i butikens sökfält.</span>
+                </div>
+                
+                <div class="mb-3">
+                    <button class="btn btn-success btn-sm me-2" onclick="copyAllItems()">
+                        <i class="bi bi-clipboard-check me-1"></i>Kopiera alla (en per rad)
+                    </button>
+                    <a id="exportStoreLink" href="#" target="_blank" class="btn btn-outline-primary btn-sm">
+                        <i class="bi bi-box-arrow-up-right me-1"></i>Öppna butikens hemsida
+                    </a>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header py-2">
+                        <small class="text-muted">Klicka på en vara för att kopiera:</small>
+                    </div>
+                    <div class="list-group list-group-flush" id="exportItemsList" style="max-height: 400px; overflow-y: auto;">
+                    </div>
+                </div>
+                
+                <div class="mt-3 text-muted small">
+                    <strong>Totalt:</strong> <span id="exportTotal">0</span> kr (uppskattat)
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
 let currentListId = null;
+let currentListData = null;
 
 document.getElementById('createListForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -144,15 +256,25 @@ async function loadList(id) {
     
     const response = await fetch(`/api/shopping-lists/${id}`);
     const list = await response.json();
+    currentListData = list;
     
     document.getElementById('currentListName').innerHTML = `
         <i class="bi bi-cart3 me-2"></i>${list.name}
         ${list.store ? `<span class="badge bg-secondary ms-2">${list.store}</span>` : ''}
+        ${list.household_size > 1 ? `<span class="badge bg-info ms-2"><i class="bi bi-people"></i> ${list.household_size}</span>` : ''}
     `;
     
     document.getElementById('listActions').style.display = 'block';
     document.getElementById('listFooter').style.display = 'block';
     document.getElementById('totalCost').textContent = (list.total_cost || 0).toFixed(2) + ' kr';
+    
+    // Visa kostnad per person om hushållet > 1
+    if (list.household_size > 1 && list.total_cost) {
+        const perPerson = (list.total_cost / list.household_size).toFixed(2);
+        document.getElementById('costPerPerson').textContent = `(${perPerson} kr/person)`;
+    } else {
+        document.getElementById('costPerPerson').textContent = '';
+    }
     
     // Uppdatera handla-knappen
     document.getElementById('shopViewBtn').href = `/shopping-list/${id}/view`;
@@ -190,19 +312,21 @@ async function loadList(id) {
         const bestStore = priceInfo?.store;
         const itemTotal = price ? (price * item.quantity).toFixed(2) : '-';
         const nutrition = product?.nutrition;
+        const isSubstituted = item.original_product_id && item.original_product_id !== item.product_id;
         
         // Butiksklassnamn för färgkodning
         const storeClass = bestStore ? `store-${bestStore.toLowerCase().replace('ö','o')}` : '';
-        const showStoreBadge = bestStore && !list.store; // Visa bara om "bästa pris" valt
+        const showStoreBadge = bestStore && !list.store;
         
         html += `
-            <li class="list-group-item ${item.checked ? 'bg-light' : ''}">
+            <li class="list-group-item ${item.checked ? 'bg-light' : ''} ${isSubstituted ? 'border-start border-4 border-warning' : ''}">
                 <div class="d-flex align-items-center">
                     <input type="checkbox" class="form-check-input me-3" 
                            ${item.checked ? 'checked' : ''} 
                            onchange="toggleItem(${item.id}, this.checked)">
                     <div class="flex-grow-1 ${item.checked ? 'text-decoration-line-through text-muted' : ''}">
                         <strong>${product?.name || 'Okänd produkt'}</strong>
+                        ${isSubstituted ? '<span class="badge bg-warning text-dark ms-2" title="Ersättningsprodukt">↔ Bytt</span>' : ''}
                         ${showStoreBadge ? `<span class="badge ${storeClass} ms-2" style="font-size: 0.65rem;">${bestStore}</span>` : ''}
                         <br>
                         <small class="text-muted">
@@ -216,9 +340,19 @@ async function loadList(id) {
                         <br>
                         <small class="text-muted">${price ? price.toFixed(2) + ' kr' : '-'} x ${item.quantity}</small>
                     </div>
-                    <button class="btn btn-sm btn-outline-danger" onclick="removeItem(${item.id})">
-                        <i class="bi bi-x"></i>
-                    </button>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-primary" onclick="showSubstitutes(${item.id}, '${product?.name || ''}', ${product?.id || 'null'})" title="Byt ut">
+                            <i class="bi bi-arrow-left-right"></i>
+                        </button>
+                        ${isSubstituted ? `
+                        <button class="btn btn-outline-secondary" onclick="revertSubstitute(${item.id})" title="Återställ original">
+                            <i class="bi bi-arrow-counterclockwise"></i>
+                        </button>
+                        ` : ''}
+                        <button class="btn btn-outline-danger" onclick="removeItem(${item.id})" title="Ta bort">
+                            <i class="bi bi-x"></i>
+                        </button>
+                    </div>
                 </div>
             </li>
         `;
@@ -231,14 +365,12 @@ async function loadList(id) {
 function getPrice(product, preferredStore) {
     if (!product || !product.prices || product.prices.length === 0) return null;
     
-    // Försök hitta pris för vald butik
     for (const p of product.prices) {
         if (preferredStore && p.store.toLowerCase() === preferredStore.toLowerCase()) {
             return { price: p.price, store: p.store };
         }
     }
     
-    // Returnera lägsta pris med butiksnamn
     let bestPrice = null;
     let bestStore = null;
     for (const p of product.prices) {
@@ -271,6 +403,271 @@ async function deleteCurrentList() {
     if (confirm('Vill du ta bort denna lista?')) {
         await fetch(`/api/shopping-lists/${currentListId}`, { method: 'DELETE' });
         location.reload();
+    }
+}
+
+// Export functions
+let exportItems = []; // Spara items för kopieringsfunktioner
+
+async function exportList(format) {
+    if (!currentListId) return;
+    
+    if (format === 'text') {
+        // Hämta text och kopiera till clipboard
+        const response = await fetch(`/api/shopping-lists/${currentListId}/export/text`);
+        const data = await response.json();
+        
+        await navigator.clipboard.writeText(data.text);
+        showToast('Listan kopierad till urklipp!', 'success');
+    } else if (format === 'csv') {
+        // Ladda ner CSV
+        window.location.href = `/api/shopping-lists/${currentListId}/export/csv`;
+    } else if (format.startsWith('store/')) {
+        // Butiks-specifik export - visa modal
+        const response = await fetch(`/api/shopping-lists/${currentListId}/export/${format}`);
+        const data = await response.json();
+        
+        exportItems = data.items || [];
+        const storeName = data.store.toUpperCase();
+        
+        document.getElementById('exportStoreName').textContent = storeName;
+        document.getElementById('exportStoreLink').href = data.store_url || '#';
+        document.getElementById('exportInstruction').textContent = data.instruction || 'Kopiera varorna till butikens sökfält.';
+        document.getElementById('exportTotal').textContent = Math.round(data.total || 0);
+        
+        // Skapa lista med klickbara items
+        const listHtml = exportItems.map((item, index) => {
+            const qty = item.quantity > 1 ? ` x${item.quantity}` : '';
+            return `
+                <button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" 
+                        onclick="copyItem(${index})" id="exportItem${index}">
+                    <span>${item.name}${qty}</span>
+                    <span class="badge bg-secondary">${item.price ? Math.round(item.price) + ' kr' : ''}</span>
+                </button>
+            `;
+        }).join('');
+        
+        document.getElementById('exportItemsList').innerHTML = listHtml || '<div class="p-3 text-muted">Inga produkter</div>';
+        
+        const modal = new bootstrap.Modal(document.getElementById('exportModal'));
+        modal.show();
+    }
+}
+
+async function copyItem(index) {
+    if (index < 0 || index >= exportItems.length) return;
+    
+    const item = exportItems[index];
+    // Kopiera bara produktnamn (bäst för sökning)
+    let text = item.name;
+    // Ta bort märket om det finns i slutet för bättre sökresultat
+    if (item.brand && text.endsWith(item.brand)) {
+        text = text.slice(0, -item.brand.length).trim();
+    }
+    
+    await navigator.clipboard.writeText(text);
+    
+    // Visuell feedback
+    const btn = document.getElementById(`exportItem${index}`);
+    const originalHtml = btn.innerHTML;
+    btn.innerHTML = '<span class="text-success"><i class="bi bi-check-lg me-1"></i>Kopierad!</span>';
+    btn.classList.add('list-group-item-success');
+    
+    setTimeout(() => {
+        btn.innerHTML = originalHtml;
+        btn.classList.remove('list-group-item-success');
+    }, 1500);
+}
+
+async function copyAllItems() {
+    if (exportItems.length === 0) return;
+    
+    // Skapa lista med en vara per rad (optimalt för att klistra in en i taget)
+    const lines = exportItems.map(item => {
+        let name = item.name;
+        if (item.brand && name.endsWith(item.brand)) {
+            name = name.slice(0, -item.brand.length).trim();
+        }
+        return item.quantity > 1 ? `${name} x${item.quantity}` : name;
+    });
+    
+    await navigator.clipboard.writeText(lines.join('\n'));
+    showToast(`${lines.length} varor kopierade! Klistra in en i taget i butikens sökfält.`, 'success');
+}
+
+function showToast(message, type = 'info') {
+    // Enkel alert som fallback
+    alert(message);
+}
+
+// Substitution functions
+async function showSubstitutes(itemId, productName, productId) {
+    const modal = new bootstrap.Modal(document.getElementById('substituteModal'));
+    document.getElementById('currentProduct').innerHTML = `
+        <strong>Nuvarande:</strong> ${productName}
+        <span id="substituteItemId" style="display:none">${itemId}</span>
+    `;
+    document.getElementById('alternativesList').innerHTML = `
+        <div class="text-center py-3">
+            <div class="spinner-border spinner-border-sm" role="status"></div>
+            Söker alternativ...
+        </div>
+    `;
+    document.getElementById('combinedList').innerHTML = `
+        <div class="text-center py-3">
+            <div class="spinner-border spinner-border-sm" role="status"></div>
+            Söker kombinerade alternativ...
+        </div>
+    `;
+    modal.show();
+    
+    // Hämta alternativ (nu med både single och combined)
+    const response = await fetch(`/api/shopping-items/${itemId}/alternatives`);
+    const data = await response.json();
+    
+    // Hantera enskilda alternativ
+    const alternatives = data.single || data || [];
+    if (alternatives.length === 0) {
+        document.getElementById('alternativesList').innerHTML = `
+            <div class="text-center py-3 text-muted">
+                <i class="bi bi-emoji-frown me-2"></i>Inga alternativ hittades
+            </div>
+        `;
+    } else {
+        let html = '';
+        for (const alt of alternatives) {
+            const price = alt.prices?.[0]?.price || '-';
+            const proteinMatch = alt.protein_match ? 
+                `<span class="badge ${alt.protein_match > 80 ? 'bg-success' : 'bg-warning'} ms-2">${alt.protein_match}% match</span>` : '';
+            html += `
+                <a href="#" class="list-group-item list-group-item-action" onclick="selectSubstitute(${itemId}, ${alt.id}); return false;">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>${alt.name}</strong>${proteinMatch}
+                            <br>
+                            <small class="text-muted">${alt.brand || ''} ${alt.weight || ''}</small>
+                            <br>
+                            <small>
+                                ${alt.nutrition?.calories || '-'} kcal | 
+                                ${alt.nutrition?.protein || '-'}g protein
+                            </small>
+                        </div>
+                        <div class="text-end">
+                            <span class="badge bg-success">${price} kr</span>
+                        </div>
+                    </div>
+                </a>
+            `;
+        }
+        document.getElementById('alternativesList').innerHTML = html;
+    }
+    
+    // Hantera kombinerade alternativ
+    const combined = data.combined || [];
+    if (combined.length === 0) {
+        document.getElementById('combinedList').innerHTML = `
+            <div class="text-center py-3 text-muted">
+                <i class="bi bi-boxes me-2"></i>Inga kombinerade alternativ tillgängliga
+            </div>
+        `;
+    } else {
+        let html = '';
+        for (const combo of combined) {
+            // Bygg beskrivning av kombinationen
+            const productDescriptions = combo.products.map((p, i) => 
+                `${combo.quantities[i]}x ${p.name} (${p.weight || '-'})`
+            ).join(' + ');
+            
+            const proteinInfo = combo.achieved_protein ? 
+                `<span class="badge bg-info">${combo.achieved_protein}g protein totalt</span>` : '';
+            const matchBadge = combo.protein_match ? 
+                `<span class="badge ${combo.protein_match > 80 ? 'bg-success' : 'bg-warning'}">${Math.round(combo.protein_match)}% match</span>` : '';
+            
+            // Skapa data för kombinationen
+            const productIds = combo.products.map(p => p.id).join(',');
+            const quantities = combo.quantities.join(',');
+            
+            html += `
+                <div class="list-group-item">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1">
+                            <strong><i class="bi bi-collection me-2"></i>Kombinerad ersättning</strong>
+                            ${matchBadge}
+                            <div class="mt-2 small">
+                                ${combo.products.map((p, i) => `
+                                    <div class="d-flex align-items-center mb-1">
+                                        <span class="badge bg-secondary me-2">${combo.quantities[i]}x</span>
+                                        <span>${p.name}</span>
+                                        <span class="text-muted ms-2">${p.weight || ''}</span>
+                                        <span class="ms-auto">${p.prices?.[0]?.price || '-'} kr/st</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                            <div class="mt-2">
+                                ${proteinInfo}
+                                <span class="text-muted small ms-2">Totalt ${combo.total_grams || '-'}g</span>
+                            </div>
+                        </div>
+                        <div class="text-end ms-3">
+                            <div class="h5 text-success mb-0">${combo.total_price?.toFixed(2) || '-'} kr</div>
+                            <button class="btn btn-sm btn-primary mt-2" onclick="selectCombinedSubstitute(${itemId}, '${productIds}', '${quantities}'); return false;">
+                                <i class="bi bi-check-lg me-1"></i>Välj
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        document.getElementById('combinedList').innerHTML = html;
+    }
+}
+
+async function selectSubstitute(itemId, newProductId) {
+    const response = await fetch(`/api/shopping-items/${itemId}/substitute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ new_product_id: newProductId })
+    });
+    
+    if (response.ok) {
+        bootstrap.Modal.getInstance(document.getElementById('substituteModal')).hide();
+        loadList(currentListId);
+    } else {
+        const error = await response.json();
+        alert('Kunde inte byta produkt: ' + (error.error || 'Okänt fel'));
+    }
+}
+
+async function selectCombinedSubstitute(itemId, productIds, quantities) {
+    // Kombinerad ersättning - ersätt en vara med flera
+    const ids = productIds.split(',').map(Number);
+    const qtys = quantities.split(',').map(Number);
+    
+    const response = await fetch(`/api/shopping-items/${itemId}/substitute-combined`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+            product_ids: ids,
+            quantities: qtys 
+        })
+    });
+    
+    if (response.ok) {
+        bootstrap.Modal.getInstance(document.getElementById('substituteModal')).hide();
+        loadList(currentListId);
+    } else {
+        const error = await response.json();
+        alert('Kunde inte byta produkter: ' + (error.error || 'Okänt fel'));
+    }
+}
+
+async function revertSubstitute(itemId) {
+    const response = await fetch(`/api/shopping-items/${itemId}/revert`, {
+        method: 'POST'
+    });
+    
+    if (response.ok) {
+        loadList(currentListId);
     }
 }
 </script>

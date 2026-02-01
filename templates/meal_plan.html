@@ -126,18 +126,150 @@
 
 {% block extra_js %}
 <script>
-// Data från servern
+// ============== DATA FRÅN SERVERN ==============
 const shoppingList = {{ shopping_list_json|safe }};
 const planData = {{ plan_json|safe }};
 const days = {{ shopping_list.days }};
+const householdSize = {{ shopping_list.household_size or 1 }};
 
-// Hämta mål från plan (hanterar olika format)
+// Hämta mål från plan - hantera att daily_targets innehåller objekt med {value, mode}
+function getTargetValue(planData, nutrient, defaultValue) {
+    if (!planData) return defaultValue;
+    
+    // Försök hämta från daily_targets först (objekt med value property)
+    if (planData.daily_targets && planData.daily_targets[nutrient]) {
+        const target = planData.daily_targets[nutrient];
+        // Om det är ett objekt med value-property, använd det
+        if (typeof target === 'object' && target.value !== undefined) {
+            return target.value;
+        }
+        // Om det är ett nummer direkt
+        if (typeof target === 'number') {
+            return target;
+        }
+    }
+    
+    // Fallback till direkta properties (bakåtkompatibilitet)
+    if (planData[nutrient] !== undefined && typeof planData[nutrient] === 'number') {
+        return planData[nutrient];
+    }
+    
+    // Sista fallback: target-suffix
+    const targetKey = nutrient + '_target';
+    if (planData[targetKey] !== undefined) {
+        return planData[targetKey];
+    }
+    
+    return defaultValue;
+}
+
 const plan = {
-    calories_target: planData?.daily_targets?.calories || planData?.calories_target || 2000,
-    protein_target: planData?.daily_targets?.protein || planData?.protein_target || 50,
-    carbs_target: planData?.daily_targets?.carbs || planData?.carbs_target || 250,
-    fat_target: planData?.daily_targets?.fat || planData?.fat_target || 65
+    calories_target: getTargetValue(planData, 'calories', 2000),
+    protein_target: getTargetValue(planData, 'protein', 50),
+    carbs_target: getTargetValue(planData, 'carbs', 250),
+    fat_target: getTargetValue(planData, 'fat', 65)
 };
+
+console.log('Plan targets:', plan); // Debug
+
+// ============== BERÄKNA TILLGÄNGLIG MAT ==============
+function parseWeight(weightStr) {
+    if (!weightStr) return 500;
+    weightStr = String(weightStr).toLowerCase().replace(/\s/g, '');
+    
+    let match = weightStr.match(/(\d+(?:[.,]\d+)?)\s*kg/);
+    if (match) return parseFloat(match[1].replace(',', '.')) * 1000;
+    
+    match = weightStr.match(/(\d+(?:[.,]\d+)?)\s*g/);
+    if (match) return parseFloat(match[1].replace(',', '.'));
+    
+    match = weightStr.match(/(\d+(?:[.,]\d+)?)\s*l/);
+    if (match) return parseFloat(match[1].replace(',', '.')) * 1000;
+    
+    match = weightStr.match(/(\d+)\s*st/);
+    if (match) return parseInt(match[1]) * 60;
+    
+    match = weightStr.match(/(\d+)\s*dl/);
+    if (match) return parseInt(match[1]) * 100;
+    
+    return 500;
+}
+
+// Måltidsklassificering
+function getMealType(category) {
+    const types = {
+        'mjölk': 'breakfast', 'havregryn': 'breakfast', 'yoghurt': 'breakfast',
+        'kvarg': 'snack', 'ägg': 'breakfast', 'bröd': 'breakfast',
+        'ost': 'breakfast', 'smör': 'breakfast',
+        'kyckling': 'protein', 'kycklingfilé': 'protein', 'lax': 'protein', 
+        'nötfärs': 'protein', 'fläsk': 'protein', 'fläskfilé': 'protein',
+        'korv': 'protein', 'tofu': 'protein',
+        'ris': 'carbs', 'pasta': 'carbs', 'potatis': 'carbs',
+        'tomat': 'vegetables', 'gurka': 'vegetables', 'sallad': 'vegetables',
+        'morot': 'vegetables', 'lök': 'vegetables', 'broccoli': 'vegetables',
+        'paprika': 'vegetables',
+        'banan': 'snack', 'äpple': 'snack', 'apelsin': 'snack', 'avokado': 'snack',
+        'grädde': 'fat', 'olja': 'fat',
+        'linser': 'protein', 'bönor': 'protein'
+    };
+    return types[category] || 'other';
+}
+
+// Beräkna total mat och näring tillgänglig
+const availableFood = [];
+let totalAvailableCalories = 0;
+let totalAvailableProtein = 0;
+let totalAvailableCarbs = 0;
+let totalAvailableFat = 0;
+
+shoppingList.items.forEach(item => {
+    if (!item.product) return;
+    
+    const packGrams = parseWeight(item.product.weight);
+    const totalGrams = packGrams * item.quantity;
+    const nutr = item.product.nutrition || {};
+    
+    // Beräkna total näring från denna produkt
+    const factor = totalGrams / 100;
+    const calories = (nutr.calories || 0) * factor;
+    const protein = (nutr.protein || 0) * factor;
+    const carbs = (nutr.carbs || 0) * factor;
+    const fat = (nutr.fat || 0) * factor;
+    
+    totalAvailableCalories += calories;
+    totalAvailableProtein += protein;
+    totalAvailableCarbs += carbs;
+    totalAvailableFat += fat;
+    
+    const cat = item.product.category || 'övrigt';
+    const mealType = getMealType(cat);
+    
+    availableFood.push({
+        name: item.product.name,
+        category: cat,
+        mealType: mealType,
+        totalGrams: totalGrams,
+        nutrition: nutr,
+        totalCalories: calories,
+        totalProtein: protein,
+        totalCarbs: carbs,
+        totalFat: fat,
+        dailyGrams: totalGrams / days,
+        dailyCalories: calories / days,
+        dailyProtein: protein / days,
+        dailyCarbs: carbs / days,
+        dailyFat: fat / days
+    });
+});
+
+// Kalorier per dag baserat på inköpt mat
+const dailyCaloriesFromFood = totalAvailableCalories / days;
+const dailyProteinFromFood = totalAvailableProtein / days;
+const dailyCarbsFromFood = totalAvailableCarbs / days;
+const dailyFatFromFood = totalAvailableFat / days;
+
+// Täckning av mål
+const calorieCoverage = (dailyCaloriesFromFood / plan.calories_target * 100);
 
 // Måltidsnamn
 const mealNames = {
@@ -146,236 +278,171 @@ const mealNames = {
     5: ['🌅 Frukost', '🥤 Förmiddagsmellanmål', '🌞 Lunch', '🍎 Eftermiddagsmellanmål', '🌙 Middag']
 };
 
-// Vilken måltid passar varje kategori?
-const mealTypeForCategory = {
-    // Frukostprodukter
-    'mjölk': 'breakfast', 'havregryn': 'breakfast', 'yoghurt': 'breakfast', 
-    'kvarg': 'snack', 'ägg': 'breakfast', 'bröd': 'breakfast',
-    // Proteinkällor (lunch/middag)
-    'kyckling': 'main', 'lax': 'main', 'nötfärs': 'main',
-    'fläsk': 'main', 'tofu': 'main',
-    // Kolhydrater (lunch/middag)
-    'ris': 'main', 'pasta': 'main', 'potatis': 'main',
-    // Grönsaker (lunch/middag)
-    'tomat': 'side', 'gurka': 'side', 'sallad': 'side',
-    'morot': 'side', 'lök': 'side', 'broccoli': 'side',
-    'paprika': 'side',
-    // Frukt (mellanmål/frukost)
-    'banan': 'snack', 'äpple': 'snack', 'apelsin': 'snack', 'avokado': 'snack',
-    // Mejeri
-    'ost': 'breakfast', 'smör': 'breakfast', 'grädde': 'main',
-    // Baljväxter
-    'linser': 'main', 'bönor': 'main',
-    // Snacks
-    'nötter': 'snack'
-};
-
-// Organisera produkter efter måltidstyp
-const productsByType = {
-    breakfast: [],  // Frukostprodukter
-    main: [],       // Protein + kolhydrater för lunch/middag
-    side: [],       // Grönsaker/tillbehör
-    snack: []       // Mellanmål (frukt, nötter)
-};
-
-shoppingList.items.forEach(item => {
-    if (!item.product) return;
-    const cat = item.product.category || 'övrigt';
-    const mealType = mealTypeForCategory[cat] || 'main';
-    
-    // Beräkna daglig portion (total mängd / antal dagar)
-    const dailyQuantity = item.quantity / days;
-    
-    productsByType[mealType].push({
-        name: item.product.name,
-        category: cat,
-        nutrition: item.product.nutrition || {},
-        totalQuantity: item.quantity,
-        dailyQuantity: dailyQuantity
-    });
-});
-
-// Portionstext baserat på kategori
-function getPortionForCategory(category, isMainMeal) {
-    const portions = {
-        'mjölk': '2 dl',
-        'havregryn': '1 dl (40g)',
-        'yoghurt': '1.5 dl',
-        'kvarg': '150g',
-        'ägg': '2 st',
-        'bröd': '2 skivor',
-        'ost': '2 skivor (30g)',
-        'smör': '10g',
-        'kyckling': isMainMeal ? '150g' : '100g',
-        'lax': '125g',
-        'nötfärs': '125g',
-        'fläsk': '150g',
-        'tofu': '150g',
-        'ris': '1.5 dl kokt',
-        'pasta': '2 dl kokt',
-        'potatis': '200g',
-        'tomat': '1 st',
-        'gurka': '1/4 st',
-        'sallad': '1 portion',
-        'morot': '1 st',
-        'lök': '1/2 st',
-        'broccoli': '100g',
-        'paprika': '1/2 st',
-        'banan': '1 st',
-        'äpple': '1 st',
-        'apelsin': '1 st',
-        'avokado': '1/2 st',
-        'grädde': '0.5 dl',
-        'linser': '1 dl kokt',
-        'bönor': '1 dl',
-        'nötter': '30g'
-    };
-    return portions[category] || '1 portion';
-}
-
-// Uppskatta kalorier per portion (realistiska portioner)
-function getCaloriesPerPortion(category, nutrition) {
-    // Realistiska portionsstorlekar anpassade till måltidsplanering
-    // Baserat på typiska svenska portioner
-    const portionCalories = {
-        'mjölk': 90,          // 2 dl mellanmjölk
-        'havregryn': 150,     // 40g havregryn
-        'yoghurt': 95,        // 1.5 dl naturell yoghurt
-        'kvarg': 90,          // 150g kvarg
-        'ägg': 140,           // 2 ägg
-        'bröd': 130,          // 2 skivor bröd
-        'ost': 95,            // 25g ost
-        'smör': 55,           // 7g smör
-        'kyckling': 165,      // 150g kycklingfilé
-        'lax': 260,           // 125g lax
-        'nötfärs': 225,       // 125g 12% nötfärs
-        'fläsk': 165,         // 150g fläskfilé
-        'tofu': 180,          // 150g tofu
-        'ris': 175,           // 150g kokt ris
-        'pasta': 200,         // 180g kokt pasta
-        'potatis': 155,       // 200g potatis
-        'tomat': 18,          // 100g tomat
-        'gurka': 8,           // 50g gurka
-        'sallad': 10,         // 50g sallad
-        'morot': 35,          // 80g morot
-        'lök': 20,            // 50g lök
-        'broccoli': 35,       // 100g broccoli
-        'paprika': 25,        // 80g paprika
-        'banan': 105,         // 1 banan (120g)
-        'äpple': 80,          // 1 äpple (150g)
-        'apelsin': 70,        // 1 apelsin (150g)
-        'avokado': 120,       // halv avokado
-        'grädde': 170,        // 0.5 dl vispgrädde
-        'linser': 115,        // 100g kokta linser
-        'bönor': 85,          // 100g kokta bönor
-        'nötter': 175         // 30g nötter
-    };
-    
-    // Returnera fördefinierad portion om den finns, annars beräkna
-    if (portionCalories[category]) {
-        return portionCalories[category];
-    }
-    
-    // Fallback: använd näringsvärden per 100g
-    return nutrition.calories || 100;
-}
-
-// Generera måltidsplan för en dag
+// ============== GENERERA MÅLTIDSPLAN ==============
+// Fördela mat för att NÅ kalorimålet för varje måltid
 function generateMealPlan(dayNumber, mealsCount) {
-    const targetCalories = plan.calories_target;
     const meals = [];
     const names = mealNames[mealsCount];
     
-    // Kaloriefördelning
+    // Kalorifördelning per måltidstyp
     const distributions = {
-        3: { '🌅 Frukost': 0.25, '🌞 Lunch': 0.40, '🌙 Middag': 0.35 },
-        4: { '🌅 Frukost': 0.25, '🌞 Lunch': 0.35, '🍎 Mellanmål': 0.10, '🌙 Middag': 0.30 },
-        5: { '🌅 Frukost': 0.20, '🥤 Förmiddagsmellanmål': 0.10, '🌞 Lunch': 0.35, '🍎 Eftermiddagsmellanmål': 0.10, '🌙 Middag': 0.25 }
+        3: { 'Frukost': 0.25, 'Lunch': 0.40, 'Middag': 0.35 },
+        4: { 'Frukost': 0.25, 'Lunch': 0.35, 'Mellanmål': 0.10, 'Middag': 0.30 },
+        5: { 'Frukost': 0.20, 'Förmiddagsmellanmål': 0.10, 'Lunch': 0.30, 'Eftermiddagsmellanmål': 0.10, 'Middag': 0.30 }
     };
-    const dist = distributions[mealsCount];
+    
+    const targetDailyCalories = plan.calories_target;
+    const targetDailyProtein = plan.protein_target;
     
     names.forEach((mealName, index) => {
-        const targetCal = Math.round(targetCalories * dist[mealName]);
+        let distKey = Object.keys(distributions[mealsCount]).find(k => mealName.includes(k));
+        const fraction = distKey ? distributions[mealsCount][distKey] : 0.2;
+        
+        const targetCal = Math.round(targetDailyCalories * fraction);
+        
         const mealProducts = [];
         let mealCalories = 0, mealProtein = 0, mealCarbs = 0, mealFat = 0;
         
         const isBreakfast = mealName.includes('Frukost');
-        const isSnack = mealName.includes('mellanmål') || mealName.includes('Mellanmål');
+        const isSnack = mealName.toLowerCase().includes('mellanmål');
         const isMainMeal = mealName.includes('Lunch') || mealName.includes('Middag');
         
-        // Hjälpfunktion för att lägga till produkt med kaloribudget
-        function addProduct(p, portionScale = 1.0) {
-            if (mealCalories >= targetCal * 1.1) return false; // Max 10% över budget
-            const baseCal = getCaloriesPerPortion(p.category, p.nutrition);
-            const cal = Math.round(baseCal * portionScale);
-            const portion = getPortionForCategory(p.category, isMainMeal);
-            mealProducts.push({ name: p.name, portion, calories: cal, category: p.category });
-            mealCalories += cal;
-            mealProtein += Math.round((p.nutrition.protein || 0) * portionScale * 0.5);
-            mealCarbs += Math.round((p.nutrition.carbs || 0) * portionScale * 0.5);
-            mealFat += Math.round((p.nutrition.fat || 0) * portionScale * 0.5);
-            return true;
+        // Lägg till mat - returnerar kalorier som lades till
+        function addFood(food, grams) {
+            if (grams < 5) return 0;
+            
+            const factor = grams / 100;
+            const portionCal = (food.nutrition.calories || 0) * factor;
+            const portionProtein = (food.nutrition.protein || 0) * factor;
+            const portionCarbs = (food.nutrition.carbs || 0) * factor;
+            const portionFat = (food.nutrition.fat || 0) * factor;
+            
+            mealProducts.push({
+                name: food.name,
+                category: food.category,
+                portion: formatPortion(grams, food.category),
+                calories: Math.round(portionCal)
+            });
+            
+            mealCalories += portionCal;
+            mealProtein += portionProtein;
+            mealCarbs += portionCarbs;
+            mealFat += portionFat;
+            return portionCal;
         }
         
-        // Välj produkter baserat på måltidstyp
+        // Beräkna hur mycket gram som behövs för X kalorier
+        function gramsForCalories(food, targetCalories) {
+            const calPer100g = food.nutrition.calories || 100;
+            return (targetCalories / calPer100g) * 100;
+        }
+        
         if (isBreakfast) {
-            // Frukost: välj 3-4 produkter som passar ihop
-            // Prioritera: havregryn/bröd + mjölk/yoghurt + ägg + frukt
-            const grains = productsByType.breakfast.filter(p => ['havregryn', 'bröd'].includes(p.category));
-            const dairy = productsByType.breakfast.filter(p => ['mjölk', 'yoghurt'].includes(p.category));
-            const eggs = productsByType.breakfast.filter(p => p.category === 'ägg');
-            const fruits = productsByType.snack.filter(p => ['banan', 'äpple', 'apelsin'].includes(p.category));
+            // Frukost: fördela kalorier mellan produkter
+            const breakfastItems = availableFood.filter(f => f.mealType === 'breakfast');
+            const fruits = availableFood.filter(f => f.mealType === 'snack' && ['banan', 'äpple'].includes(f.category));
             
-            // Lägg till en av varje typ (om tillgänglig)
-            if (grains.length > 0) addProduct(grains[0], 0.8);
-            if (dairy.length > 0) addProduct(dairy[0], 0.8);
-            if (eggs.length > 0 && mealCalories < targetCal * 0.8) addProduct(eggs[0], 0.7);
-            if (fruits.length > 0 && mealCalories < targetCal * 0.9) addProduct(fruits[0], 1.0);
+            if (breakfastItems.length > 0) {
+                // Ge 70% till huvudfrukost, 30% till tillbehör
+                const mainCalories = targetCal * 0.7;
+                const sideCalories = targetCal * 0.3;
+                
+                // Huvudfrukost (havregryn etc) - första produkten får mest
+                const mainItem = breakfastItems[0];
+                const mainGrams = Math.min(gramsForCalories(mainItem, mainCalories), mainItem.dailyGrams * 0.8);
+                addFood(mainItem, mainGrams);
+                
+                // Övriga frukostprodukter delar resten
+                const remaining = targetCal - mealCalories;
+                const others = breakfastItems.slice(1);
+                if (others.length > 0 && remaining > 50) {
+                    const perItem = remaining / others.length;
+                    others.forEach(item => {
+                        const grams = Math.min(gramsForCalories(item, perItem), item.dailyGrams * 0.6);
+                        addFood(item, grams);
+                    });
+                }
+            }
+            
+            // Frukt om vi har utrymme
+            if (fruits.length > 0 && mealCalories < targetCal * 0.9) {
+                const remaining = targetCal - mealCalories;
+                const grams = Math.min(gramsForCalories(fruits[0], remaining), 150);
+                addFood(fruits[0], grams);
+            }
             
         } else if (isSnack) {
-            // Mellanmål: 1-2 produkter max
-            const snackItems = productsByType.snack.slice(0, 2);
-            snackItems.forEach((p, i) => {
-                if (i === 0 || mealCalories < targetCal * 0.7) {
-                    addProduct(p, 0.8);
-                }
-            });
+            const snacks = availableFood.filter(f => f.mealType === 'snack');
+            const dairy = availableFood.filter(f => f.category === 'kvarg' || f.category === 'yoghurt');
+            
+            // Mellanmål - använd hela budgeten
+            const allSnacks = [...snacks, ...dairy];
+            if (allSnacks.length > 0) {
+                const snackIndex = mealName.includes('Eftermiddag') ? 1 : 0;
+                const item = allSnacks[snackIndex % allSnacks.length];
+                const grams = Math.min(gramsForCalories(item, targetCal), item.dailyGrams * 0.8);
+                addFood(item, grams);
+            }
             
         } else if (isMainMeal) {
-            // Lunch/Middag: protein + kolhydrat + grönsaker
-            const proteinIndex = mealName.includes('Lunch') ? 0 : 1;
-            const proteins = productsByType.main.filter(p => ['kyckling', 'lax', 'nötfärs', 'fläsk', 'tofu'].includes(p.category));
-            const carbs = productsByType.main.filter(p => ['ris', 'pasta', 'potatis'].includes(p.category));
-            const veggies = productsByType.side;
+            // Huvudmåltid: protein 40%, kolhydrater 40%, grönsaker 15%, fett 5%
+            const proteins = availableFood.filter(f => f.mealType === 'protein');
+            const carbs = availableFood.filter(f => f.mealType === 'carbs');
+            const veggies = availableFood.filter(f => f.mealType === 'vegetables');
+            const fats = availableFood.filter(f => f.mealType === 'fat');
+            const mealIndex = mealName.includes('Lunch') ? 0 : 1;
             
-            // Välj ETT protein
+            const proteinBudget = targetCal * 0.35;
+            const carbBudget = targetCal * 0.40;
+            const vegBudget = targetCal * 0.15;
+            const fatBudget = targetCal * 0.10;
+            
+            // Protein
             if (proteins.length > 0) {
-                const protein = proteins[proteinIndex % proteins.length];
-                const baseCal = getCaloriesPerPortion(protein.category, protein.nutrition);
-                const portion = getPortionForCategory(protein.category, true);
-                mealProducts.push({ name: protein.name, portion, calories: baseCal, category: protein.category });
-                mealCalories += baseCal;
-                mealProtein += Math.round((protein.nutrition.protein || 0) * 1.2);
-                mealFat += Math.round((protein.nutrition.fat || 0) * 1.2);
+                const protein = proteins[mealIndex % proteins.length];
+                const grams = Math.min(gramsForCalories(protein, proteinBudget), protein.dailyGrams * 0.7);
+                addFood(protein, grams);
             }
             
-            // Välj EN kolhydrat
+            // Kolhydrater
             if (carbs.length > 0) {
-                const carb = carbs[proteinIndex % carbs.length];
-                const baseCal = getCaloriesPerPortion(carb.category, carb.nutrition);
-                const portion = getPortionForCategory(carb.category, true);
-                mealProducts.push({ name: carb.name, portion, calories: baseCal, category: carb.category });
-                mealCalories += baseCal;
-                mealCarbs += Math.round((carb.nutrition.carbs || 0) * 1.2);
+                const carb = carbs[mealIndex % carbs.length];
+                const grams = Math.min(gramsForCalories(carb, carbBudget), carb.dailyGrams * 0.7);
+                addFood(carb, grams);
             }
             
-            // Lägg till 2 grönsaker (de har lågt kaloriinnehåll)
-            veggies.slice(0, 2).forEach(v => {
-                const cal = getCaloriesPerPortion(v.category, v.nutrition);
-                const portion = getPortionForCategory(v.category, true);
-                mealProducts.push({ name: v.name, portion, calories: cal, category: v.category });
-                mealCalories += cal;
-            });
+            // Grönsaker - lägg till flera
+            if (veggies.length > 0) {
+                const vegPerItem = vegBudget / Math.min(veggies.length, 3);
+                veggies.slice(0, 3).forEach((veg, i) => {
+                    if ((i + mealIndex) % 2 === 0 || veggies.length <= 2) {
+                        const grams = Math.min(gramsForCalories(veg, vegPerItem), veg.dailyGrams * 0.5);
+                        addFood(veg, grams);
+                    }
+                });
+            }
+            
+            // Fett
+            if (fats.length > 0) {
+                const fat = fats[0];
+                const grams = Math.min(gramsForCalories(fat, fatBudget), fat.dailyGrams * 0.5);
+                addFood(fat, grams);
+            }
+            
+            // Om vi fortfarande är under målet, öka kolhydrater/protein
+            if (mealCalories < targetCal * 0.85) {
+                const remaining = targetCal - mealCalories;
+                if (carbs.length > 0) {
+                    const carb = carbs[mealIndex % carbs.length];
+                    const extraGrams = gramsForCalories(carb, remaining * 0.6);
+                    addFood(carb, Math.min(extraGrams, 100));
+                }
+                if (proteins.length > 0 && mealCalories < targetCal * 0.9) {
+                    const protein = proteins[mealIndex % proteins.length];
+                    const extraGrams = gramsForCalories(protein, targetCal - mealCalories);
+                    addFood(protein, Math.min(extraGrams, 80));
+                }
+            }
         }
         
         meals.push({
@@ -383,10 +450,10 @@ function generateMealPlan(dayNumber, mealsCount) {
             targetCalories: targetCal,
             products: mealProducts,
             totals: {
-                calories: mealCalories,
-                protein: mealProtein,
-                carbs: mealCarbs,
-                fat: mealFat
+                calories: Math.round(mealCalories),
+                protein: Math.round(mealProtein),
+                carbs: Math.round(mealCarbs),
+                fat: Math.round(mealFat)
             }
         });
     });
@@ -394,7 +461,27 @@ function generateMealPlan(dayNumber, mealsCount) {
     return meals;
 }
 
-// Visa måltidsplan för en dag
+function formatPortion(grams, category) {
+    if (grams <= 0) return '-';
+    
+    const formats = {
+        'mjölk': g => `${Math.round(g/10)} dl`,
+        'ägg': g => `${Math.round(g/60)} st`,
+        'bröd': g => `${Math.round(g/40)} skivor`,
+        'ost': g => `${Math.round(g)}g`,
+        'smör': g => `${Math.round(g)}g`,
+        'banan': g => g > 100 ? '1 st' : '½ st',
+        'äpple': g => g > 150 ? '1 st' : '½ st'
+    };
+    
+    if (formats[category]) {
+        return formats[category](grams);
+    }
+    
+    return `${Math.round(grams)}g`;
+}
+
+// ============== VISA MÅLTIDSPLAN ==============
 function showDay(dayNumber) {
     const mealsCount = parseInt(document.getElementById('mealsPerDay').value);
     const meals = generateMealPlan(dayNumber, mealsCount);
@@ -402,8 +489,26 @@ function showDay(dayNumber) {
     document.getElementById('dayLabel').textContent = `Dag ${dayNumber}`;
     
     let totalCalories = 0, totalProtein = 0, totalCarbs = 0, totalFat = 0;
-    
     let html = '';
+    
+    // Visa info om täckning - varning endast om maten INTE räcker
+    if (calorieCoverage < 90) {
+        html += `
+            <div class="alert alert-warning mb-3">
+                <i class="bi bi-exclamation-triangle me-2"></i>
+                <strong>Obs!</strong> Den inköpta maten täcker endast ca ${Math.round(calorieCoverage)}% av ditt dagliga kalorimål.
+                Du kan behöva handla mer mat.
+            </div>
+        `;
+    } else if (calorieCoverage >= 100) {
+        html += `
+            <div class="alert alert-success mb-3">
+                <i class="bi bi-check-circle me-2"></i>
+                Du har köpt tillräckligt med mat för att nå dina näringsmål. 
+                Maten räcker till ${Math.round(calorieCoverage)}% av ditt kaloribehov per dag.
+            </div>
+        `;
+    }
     
     meals.forEach((meal, index) => {
         const isMainMeal = meal.name.includes('Frukost') || meal.name.includes('Lunch') || meal.name.includes('Middag');
@@ -418,11 +523,9 @@ function showDay(dayNumber) {
                 <div class="card-header ${isMainMeal ? 'bg-success text-white' : 'bg-light'}">
                     <div class="d-flex justify-content-between align-items-center">
                         <h5 class="mb-0">${meal.name}</h5>
-                        <div>
-                            <span class="badge ${isMainMeal ? 'bg-light text-success' : 'bg-secondary'}">
-                                ~${meal.targetCalories} kcal mål
-                            </span>
-                        </div>
+                        <span class="badge ${isMainMeal ? 'bg-light text-success' : 'bg-secondary'}">
+                            ${meal.totals.calories} kcal
+                        </span>
                     </div>
                 </div>
                 <div class="card-body">
@@ -432,22 +535,23 @@ function showDay(dayNumber) {
                             <ul class="list-unstyled">
         `;
         
-        meal.products.forEach(product => {
-            const icon = getCategoryIcon(product.category);
-            html += `
-                <li class="mb-2 d-flex align-items-center">
-                    <span class="me-2">${icon}</span>
-                    <span class="flex-grow-1">
-                        <strong>${product.name}</strong>
-                        <br>
-                        <small class="text-muted">${product.portion}</small>
-                    </span>
-                    <span class="badge bg-light text-dark">
-                        ${product.calories} kcal
-                    </span>
-                </li>
-            `;
-        });
+        if (meal.products.length === 0) {
+            html += `<li class="text-muted mb-2">Inga produkter</li>`;
+        } else {
+            meal.products.forEach(product => {
+                const icon = getCategoryIcon(product.category);
+                html += `
+                    <li class="mb-2 d-flex align-items-center">
+                        <span class="me-2">${icon}</span>
+                        <span class="flex-grow-1">
+                            <strong>${product.name}</strong><br>
+                            <small class="text-muted">${product.portion}</small>
+                        </span>
+                        <span class="badge bg-light text-dark">${product.calories} kcal</span>
+                    </li>
+                `;
+            });
+        }
         
         html += `
                             </ul>
@@ -481,68 +585,40 @@ function showDay(dayNumber) {
     
     document.getElementById('mealsContainer').innerHTML = html;
     
-    // Uppdatera daglig sammanfattning
-    const targetCalories = plan?.calories_target || 2000;
-    const targetProtein = plan?.protein_target || 50;
-    const targetCarbs = plan?.carbs_target || 250;
-    const targetFat = plan?.fat_target || 65;
-    
     document.getElementById('totalCalories').textContent = totalCalories;
     document.getElementById('totalProtein').textContent = totalProtein + 'g';
     document.getElementById('totalCarbs').textContent = totalCarbs + 'g';
     document.getElementById('totalFat').textContent = totalFat + 'g';
     
-    // Uppdatera progress bars
-    document.getElementById('caloriesBar').style.width = Math.min(100, (totalCalories / targetCalories) * 100) + '%';
-    document.getElementById('proteinBar').style.width = Math.min(100, (totalProtein / targetProtein) * 100) + '%';
-    document.getElementById('carbsBar').style.width = Math.min(100, (totalCarbs / targetCarbs) * 100) + '%';
-    document.getElementById('fatBar').style.width = Math.min(100, (totalFat / targetFat) * 100) + '%';
+    document.getElementById('caloriesBar').style.width = Math.min(100, (totalCalories / plan.calories_target) * 100) + '%';
+    document.getElementById('proteinBar').style.width = Math.min(100, (totalProtein / plan.protein_target) * 100) + '%';
+    document.getElementById('carbsBar').style.width = Math.min(100, (totalCarbs / plan.carbs_target) * 100) + '%';
+    document.getElementById('fatBar').style.width = Math.min(100, (totalFat / plan.fat_target) * 100) + '%';
 }
 
 function getCategoryIcon(category) {
     const icons = {
-        'mjölk': '🥛',
-        'havregryn': '🥣',
-        'yoghurt': '🥛',
-        'kvarg': '🥛',
-        'bröd': '🍞',
-        'ägg': '🥚',
-        'ost': '🧀',
-        'smör': '🧈',
-        'kyckling': '🍗',
-        'lax': '🐟',
-        'nötfärs': '🥩',
-        'fläsk': '🥓',
-        'tofu': '🧊',
-        'ris': '🍚',
-        'pasta': '🍝',
-        'potatis': '🥔',
-        'tomat': '🍅',
-        'gurka': '🥒',
-        'sallad': '🥬',
-        'morot': '🥕',
-        'lök': '🧅',
-        'broccoli': '🥦',
-        'paprika': '🫑',
-        'banan': '🍌',
-        'äpple': '🍎',
-        'apelsin': '🍊',
-        'avokado': '🥑',
-        'grädde': '🥛',
-        'linser': '🫘',
-        'bönor': '🫘',
-        'nötter': '🥜'
+        'mjölk': '🥛', 'havregryn': '🥣', 'yoghurt': '🥛', 'kvarg': '🥛',
+        'bröd': '🍞', 'ägg': '🥚', 'ost': '🧀', 'smör': '🧈',
+        'kyckling': '🍗', 'kycklingfilé': '🍗', 'lax': '🐟',
+        'nötfärs': '🥩', 'fläsk': '🥓', 'fläskfilé': '🥓', 'korv': '🌭', 'tofu': '🧊',
+        'ris': '🍚', 'pasta': '🍝', 'potatis': '🥔',
+        'tomat': '🍅', 'gurka': '🥒', 'sallad': '🥬', 'morot': '🥕',
+        'lök': '🧅', 'broccoli': '🥦', 'paprika': '🫑',
+        'banan': '🍌', 'äpple': '🍎', 'apelsin': '🍊', 'avokado': '🥑',
+        'grädde': '🥛', 'olja': '🫒', 'linser': '🫘', 'bönor': '🫘', 'nötter': '🥜'
     };
     return icons[category] || '🍽️';
 }
 
 function updateMealPlan() {
-    const currentDay = document.getElementById('selectedDay').value;
-    showDay(currentDay);
+    showDay(document.getElementById('selectedDay').value);
 }
 
-// Visa dag 1 vid sidladdning
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('Tillgänglig mat per dag:', Math.round(dailyCaloriesFromFood), 'kcal');
+    console.log('Mål per dag:', plan.calories_target, 'kcal');
+    console.log('Täckning:', Math.round(calorieCoverage), '%');
     showDay(1);
 });
 </script>

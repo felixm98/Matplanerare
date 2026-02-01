@@ -24,8 +24,12 @@
                             {% if plans %}
                             <select class="form-select form-select-lg" name="plan_id" required>
                                 {% for plan in plans %}
-                                <option value="{{ plan.id }}">
+                                <option value="{{ plan.id }}" 
+                                        data-allergies="{{ plan.get_allergies_list()|join(',') if plan.get_allergies_list() else '' }}">
                                     {{ plan.name }} ({{ plan.calories_target }} kcal/dag)
+                                    {% if plan.get_allergies_list() %}
+                                        - {% for a in plan.get_allergies_list()[:3] %}{{ allergens.get(a, {}).get('icon', '') }}{% endfor %}
+                                    {% endif %}
                                 </option>
                                 {% endfor %}
                             </select>
@@ -57,6 +61,45 @@
                                 </div>
                             </div>
                         </div>
+                        
+                        <hr class="my-4">
+                        
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">
+                                    <i class="bi bi-people me-2"></i>Antal personer i hushållet
+                                </label>
+                                <div class="input-group">
+                                    <button type="button" class="btn btn-outline-secondary" onclick="changeHouseholdSize(-1)">-</button>
+                                    <input type="number" class="form-control text-center" name="household_size" value="1" min="1" max="10">
+                                    <button type="button" class="btn btn-outline-secondary" onclick="changeHouseholdSize(1)">+</button>
+                                </div>
+                                <small class="text-muted">Kvantiteter skalas automatiskt</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">
+                                    <i class="bi bi-wallet2 me-2"></i>Budget (valfritt)
+                                </label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" name="budget" placeholder="Ingen gräns" min="0" step="50">
+                                    <span class="input-group-text">kr</span>
+                                </div>
+                                <small class="text-muted">Generatorn försöker hålla sig under budgeten</small>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="prefer_cheaper" id="preferCheaper">
+                                <label class="form-check-label" for="preferCheaper">
+                                    <i class="bi bi-piggy-bank me-2 text-success"></i>
+                                    Prioritera billigare produkter
+                                    <small class="text-muted d-block">Väljer billigare alternativ även om de är något sämre på näring</small>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <hr class="my-4">
 
                         <div class="mb-4">
                             <label class="form-label fw-bold">Föredragen butik</label>
@@ -88,6 +131,55 @@
                     </div>
                     <div class="card-body">
                         <p id="resultSummary"></p>
+                        
+                        <!-- Näringsuppfyllnad -->
+                        <div id="nutritionCoverage" class="mb-4">
+                            <h6 class="mb-3"><i class="bi bi-pie-chart me-2"></i>Näringsuppfyllnad</h6>
+                            <div class="row g-2">
+                                <div class="col-6 col-md-3">
+                                    <div class="text-center p-2 bg-light rounded">
+                                        <div class="fw-bold" id="caloriesCoverage">-</div>
+                                        <small class="text-muted">Kalorier</small>
+                                        <div class="progress mt-1" style="height: 4px;">
+                                            <div class="progress-bar bg-success" id="caloriesBar" style="width: 0%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-6 col-md-3">
+                                    <div class="text-center p-2 bg-light rounded">
+                                        <div class="fw-bold" id="proteinCoverage">-</div>
+                                        <small class="text-muted">Protein</small>
+                                        <div class="progress mt-1" style="height: 4px;">
+                                            <div class="progress-bar bg-info" id="proteinBar" style="width: 0%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-6 col-md-3">
+                                    <div class="text-center p-2 bg-light rounded">
+                                        <div class="fw-bold" id="carbsCoverage">-</div>
+                                        <small class="text-muted">Kolhydrater</small>
+                                        <div class="progress mt-1" style="height: 4px;">
+                                            <div class="progress-bar bg-warning" id="carbsBar" style="width: 0%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-6 col-md-3">
+                                    <div class="text-center p-2 bg-light rounded">
+                                        <div class="fw-bold" id="fatCoverage">-</div>
+                                        <small class="text-muted">Fett</small>
+                                        <div class="progress mt-1" style="height: 4px;">
+                                            <div class="progress-bar bg-danger" id="fatBar" style="width: 0%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mt-2 text-muted small" id="nutritionDetails"></div>
+                        </div>
+                        
+                        <div id="budgetWarning" class="alert alert-warning d-none mb-3">
+                            <i class="bi bi-exclamation-triangle me-2"></i>
+                            <span id="budgetWarningText"></span>
+                        </div>
                         <a href="/shopping-list" class="btn btn-success">
                             <i class="bi bi-cart3 me-2"></i>Visa inköpslista
                         </a>
@@ -100,8 +192,9 @@
                     <h6><i class="bi bi-lightbulb me-2 text-warning"></i>Hur fungerar genereringen?</h6>
                     <ol class="text-muted small mb-0">
                         <li>Appen analyserar din näringsplan och beräknar dagliga behov</li>
-                        <li>Basvaror söks från matspar.se för att hitta aktuella priser</li>
-                        <li>Produkter väljs för att matcha dina näringsbehov</li>
+                        <li>Allergier och kostrestriktioner filtreras automatiskt</li>
+                        <li>Basvaror söks för att hitta aktuella priser</li>
+                        <li>Produkter väljs för att matcha dina näringsbehov och budget</li>
                         <li>En inköpslista skapas med optimala produkter och kvantiteter</li>
                     </ol>
                 </div>
@@ -119,6 +212,12 @@ function setDays(days) {
     event.target.classList.add('active');
 }
 
+function changeHouseholdSize(delta) {
+    const input = document.querySelector('[name="household_size"]');
+    const newVal = Math.max(1, Math.min(10, parseInt(input.value) + delta));
+    input.value = newVal;
+}
+
 document.getElementById('generateForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     
@@ -129,10 +228,15 @@ document.getElementById('generateForm').addEventListener('submit', async (e) => 
     button.disabled = true;
     
     const formData = new FormData(form);
+    const budget = formData.get('budget');
+    
     const data = {
         plan_id: parseInt(formData.get('plan_id')),
         days: parseInt(formData.get('days')),
-        store: formData.get('store') || null
+        store: formData.get('store') || null,
+        household_size: parseInt(formData.get('household_size')) || 1,
+        budget: budget ? parseFloat(budget) : null,
+        prefer_cheaper: formData.get('prefer_cheaper') === 'on'
     };
     
     try {
@@ -144,16 +248,70 @@ document.getElementById('generateForm').addEventListener('submit', async (e) => 
         
         if (response.ok) {
             const result = await response.json();
+            const householdSize = data.household_size;
+            const costPerPerson = householdSize > 1 ? ((result.total_cost || 0) / householdSize).toFixed(2) : null;
             
-            document.getElementById('resultSummary').innerHTML = `
+            let summaryHtml = `
                 <strong>${result.name}</strong><br>
                 ${result.items?.length || 0} produkter · 
                 Totalt ca <strong>${(result.total_cost || 0).toFixed(2)} kr</strong>
             `;
+            
+            if (costPerPerson) {
+                summaryHtml += `<br><small class="text-muted">Ca ${costPerPerson} kr per person</small>`;
+            }
+            
+            document.getElementById('resultSummary').innerHTML = summaryHtml;
+            
+            // Visa näringsuppfyllnad
+            if (result.nutrition_coverage) {
+                const cov = result.nutrition_coverage;
+                document.getElementById('caloriesCoverage').textContent = cov.calories + '%';
+                document.getElementById('proteinCoverage').textContent = cov.protein + '%';
+                document.getElementById('carbsCoverage').textContent = cov.carbs + '%';
+                document.getElementById('fatCoverage').textContent = cov.fat + '%';
+                
+                document.getElementById('caloriesBar').style.width = Math.min(100, cov.calories) + '%';
+                document.getElementById('proteinBar').style.width = Math.min(100, cov.protein) + '%';
+                document.getElementById('carbsBar').style.width = Math.min(100, cov.carbs) + '%';
+                document.getElementById('fatBar').style.width = Math.min(100, cov.fat) + '%';
+                
+                // Färgsätt baserat på uppfyllnad
+                ['calories', 'protein', 'carbs', 'fat'].forEach(nutrient => {
+                    const bar = document.getElementById(nutrient + 'Bar');
+                    const val = cov[nutrient];
+                    if (val >= 90) bar.className = 'progress-bar bg-success';
+                    else if (val >= 70) bar.className = 'progress-bar bg-warning';
+                    else bar.className = 'progress-bar bg-danger';
+                });
+            }
+            
+            // Visa detaljer om totaler vs mål
+            if (result.nutrition_totals && result.nutrition_targets) {
+                const totals = result.nutrition_totals;
+                const targets = result.nutrition_targets;
+                document.getElementById('nutritionDetails').innerHTML = `
+                    Totalt: ${totals.calories} / ${targets.calories} kcal · 
+                    ${totals.protein} / ${targets.protein}g protein · 
+                    ${totals.carbs} / ${targets.carbs}g kolhydrater
+                `;
+            }
+            
+            // Visa budget-varning om över budget
+            const budgetWarning = document.getElementById('budgetWarning');
+            if (data.budget && result.total_cost > data.budget) {
+                document.getElementById('budgetWarningText').textContent = 
+                    `Totalkostnaden (${result.total_cost.toFixed(2)} kr) överstiger din budget (${data.budget} kr). Du kan byta ut produkter manuellt för att sänka kostnaden.`;
+                budgetWarning.classList.remove('d-none');
+            } else {
+                budgetWarning.classList.add('d-none');
+            }
+            
             document.getElementById('generatedResult').style.display = 'block';
             document.getElementById('generatedResult').scrollIntoView({ behavior: 'smooth' });
         } else {
-            alert('Ett fel uppstod vid generering. Försök igen.');
+            const error = await response.json();
+            alert('Ett fel uppstod: ' + (error.error || 'Okänt fel'));
         }
     } catch (error) {
         alert('Ett fel uppstod: ' + error.message);
