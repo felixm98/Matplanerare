@@ -249,14 +249,132 @@ class MatsparScraper:
     
     def search_products(self, query, limit=20, postal_code=None):
         """
-        Sök efter produkter - använder lokal databas med realistiska priser
+        Sök efter produkter - försöker först matspar.se, sedan fallback till lokal databas
         
-        Om postal_code anges, kan priserna justeras för lokala butiker.
+        Om postal_code anges, sätts det som cookie för att få lokala priser.
         """
         # Ställ in postnummer om angivet
         if postal_code:
             self.set_postal_code(postal_code)
         
+        # Försök hämta från matspar.se
+        try:
+            online_results = self._search_matspar_online(query, limit, postal_code)
+            if online_results:
+                print(f"Hittade {len(online_results)} produkter från matspar.se")
+                return online_results
+        except Exception as e:
+            print(f"Matspar.se sökning misslyckades: {e}")
+        
+        # Fallback till lokal databas
+        return self._search_local_database(query, limit)
+    
+    def _search_matspar_online(self, query, limit=20, postal_code=None):
+        """
+        Försök söka på matspar.se direkt
+        Returnerar produkter med riktiga priser om möjligt
+        """
+        import time
+        
+        try:
+            # Matspar använder en sök-URL
+            search_url = f"{self.BASE_URL}/kategori?q={quote(query)}"
+            
+            # Sätt cookies för postnummer
+            if postal_code:
+                self.session.cookies.set('zipcode', str(postal_code), domain='matspar.se')
+            
+            response = self.session.get(search_url, timeout=10)
+            
+            if response.status_code != 200:
+                return None
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            products = []
+            
+            # Hitta produktkort på sidan
+            # Matspar.se renderar produkter via JavaScript så detta kan vara begränsat
+            product_cards = soup.select('a[href*="/produkt/"]')
+            
+            seen_urls = set()
+            for card in product_cards[:limit * 2]:  # Hämta extra för att filtrera dubletter
+                href = card.get('href', '')
+                if not href or href in seen_urls or '/produkt/' not in href:
+                    continue
+                
+                seen_urls.add(href)
+                
+                # Försök extrahera info från kortet
+                product_data = self._parse_product_card(card, href)
+                if product_data:
+                    products.append(product_data)
+                    if len(products) >= limit:
+                        break
+                
+                # Rate limiting
+                time.sleep(0.1)
+            
+            return products if products else None
+            
+        except Exception as e:
+            print(f"Fel vid matspar.se-sökning: {e}")
+            return None
+    
+    def _parse_product_card(self, card, url):
+        """Försök parsa produktinfo från ett produktkort"""
+        try:
+            # Hämta text från kortet
+            text = card.get_text(separator=' ', strip=True)
+            
+            # Försök extrahera namn, pris, vikt
+            # Format är ofta: "Produktnamn Produktnamn Varumärke Vikt pris"
+            
+            # Hitta pris (siffror följt av kr eller ,00)
+            import re
+            price_match = re.search(r'(\d+[,.]?\d*)\s*kr', text)
+            price = None
+            if price_match:
+                price = float(price_match.group(1).replace(',', '.'))
+            
+            # Hitta vikt (siffror följt av g, kg, ml, l)
+            weight_match = re.search(r'(\d+(?:[,.]?\d+)?)\s*(g|kg|ml|l|cl|dl)', text, re.IGNORECASE)
+            weight = None
+            if weight_match:
+                weight = f"{weight_match.group(1)}{weight_match.group(2)}"
+            
+            # Hitta bild
+            img = card.find('img')
+            image_url = None
+            if img:
+                src = img.get('src', '')
+                if 'cloudfront.net' in src:
+                    image_url = src
+            
+            # Extrahera produktnamn (första delen av texten)
+            name_parts = text.split()
+            name = ' '.join(name_parts[:4]) if name_parts else 'Okänd produkt'
+            
+            # Skapa slug från URL för kategori
+            slug = url.split('/produkt/')[-1] if '/produkt/' in url else ''
+            
+            return {
+                'id': abs(hash(url)) % 1000000,
+                'name': name,
+                'brand': None,
+                'weight': weight,
+                'category': None,
+                'prices': {'Matspar': price} if price else {},
+                'nutrition': {},
+                'allergens': [],
+                'image': image_url,
+                'url': f"{self.BASE_URL}{url}" if not url.startswith('http') else url
+            }
+        except Exception as e:
+            return None
+    
+    def _search_local_database(self, query, limit=20):
+        """Sök i lokal fallback-databas"""
         query_lower = query.lower().strip()
         
         # Direkt matchning
