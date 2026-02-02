@@ -2,6 +2,11 @@
 Databas för matplaneraren
 Lagrar produkter, priser och näringsvärden
 
+SESSIONSBASERAD HANTERING:
+- Varje användare får ett unikt session_id (UUID) som sparas i en cookie
+- All data (planer, listor, recept) kopplas till session_id
+- Användarinställningar (postnummer, butik) sparas per session
+
 NÄRINGSMÅLSLOGIK:
 - 'target': Standardmål att försöka uppnå (±20% tolerans anses bra)
 - 'mode': 'exact' (försök matcha), 'min' (minst X), 'max' (högst X), 'ignore' (ingen preferens)
@@ -105,6 +110,31 @@ RDI_VALUES = {
     'potassium': {'value': 3500, 'unit': 'mg', 'name': 'Kalium', 'description': 'Blodtryck, muskelfunktion'},
     'zinc': {'value': 8, 'unit': 'mg', 'name': 'Zink', 'description': 'Immunförsvar, sårläkning'}
 }
+
+
+class UserSession(db.Model):
+    """Användarens sessionsinställningar"""
+    __tablename__ = 'user_sessions'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.String(36), unique=True, nullable=False, index=True)  # UUID
+    
+    # Platsinställningar
+    postal_code = db.Column(db.String(10))  # Postnummer för prisberäkning
+    preferred_store = db.Column(db.String(50))  # Favoritbutik
+    
+    # Tidsstämplar
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    last_active = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def to_dict(self):
+        return {
+            'session_id': self.session_id,
+            'postal_code': self.postal_code,
+            'preferred_store': self.preferred_store,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'last_active': self.last_active.isoformat() if self.last_active else None
+        }
 
 
 class Product(db.Model):
@@ -253,6 +283,7 @@ class NutritionPlan(db.Model):
     __tablename__ = 'nutrition_plans'
     
     id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.String(36), index=True)  # Kopplar till användarens session
     name = db.Column(db.String(100), nullable=False)
     
     # Allergier och intoleranser (komma-separerad lista)
@@ -334,6 +365,7 @@ class ShoppingList(db.Model):
     __tablename__ = 'shopping_lists'
     
     id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.String(36), index=True)  # Kopplar till användarens session
     name = db.Column(db.String(100))
     store = db.Column(db.String(50))  # Vald butik
     days = db.Column(db.Integer, default=7)  # Antal dagar
@@ -467,6 +499,7 @@ class Recipe(db.Model):
     __tablename__ = 'recipes'
     
     id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.String(36), index=True)  # Kopplar till användarens session
     shopping_list_id = db.Column(db.Integer, db.ForeignKey('shopping_lists.id'))
     
     day = db.Column(db.Integer, default=1)  # Dag 1-7

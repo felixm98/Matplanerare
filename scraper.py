@@ -231,11 +231,32 @@ class MatsparScraper:
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'Accept-Language': 'sv-SE,sv;q=0.9,en;q=0.8',
         })
+        
+        # Postnummer för platsbaserade priser
+        self.postal_code = None
     
-    def search_products(self, query, limit=20):
+    def set_postal_code(self, postal_code):
+        """
+        Ställ in postnummer för att få lokala priser.
+        Matspar.se använder postnummer för att visa vilka butiker som finns nära.
+        """
+        if postal_code and len(str(postal_code)) == 5:
+            self.postal_code = str(postal_code)
+            # Sätt cookie för postnummer (matspar använder detta)
+            self.session.cookies.set('zipcode', self.postal_code, domain='matspar.se')
+            return True
+        return False
+    
+    def search_products(self, query, limit=20, postal_code=None):
         """
         Sök efter produkter - använder lokal databas med realistiska priser
+        
+        Om postal_code anges, kan priserna justeras för lokala butiker.
         """
+        # Ställ in postnummer om angivet
+        if postal_code:
+            self.set_postal_code(postal_code)
+        
         query_lower = query.lower().strip()
         
         # Direkt matchning

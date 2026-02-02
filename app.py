@@ -7,8 +7,8 @@ En app för att planera mat baserat på näringsbehov och generera inköpslistor
 from dotenv import load_dotenv
 load_dotenv()
 
-from flask import Flask, render_template, request, jsonify, redirect, url_for
-from database import db, init_db, Product, Price, Nutrition, NutritionPlan, ShoppingList, ShoppingItem, Recipe, ALLERGENS, RDI_VALUES
+from flask import Flask, render_template, request, jsonify, redirect, url_for, make_response
+from database import db, init_db, Product, Price, Nutrition, NutritionPlan, ShoppingList, ShoppingItem, Recipe, UserSession, ALLERGENS, RDI_VALUES
 from scraper import MatsparScraper
 import os
 import math
@@ -16,6 +16,7 @@ import csv
 import io
 import re
 import json
+import uuid
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'matplanerare-secret-key-2024'
@@ -32,29 +33,80 @@ scraper = MatsparScraper()
 STORES = ['ICA', 'Coop', 'Willys', 'Hemköp', 'Lidl', 'City Gross']
 
 
+def get_or_create_session():
+    """Hämtar eller skapar ett unikt session-ID för användaren"""
+    session_id = request.cookies.get('matplanerare_session')
+    
+    if session_id:
+        # Kontrollera att sessionen finns i databasen
+        user_session = UserSession.query.filter_by(session_id=session_id).first()
+        if user_session:
+            # Uppdatera last_active
+            user_session.last_active = db.func.now()
+            db.session.commit()
+            return session_id
+    
+    # Skapa ny session
+    session_id = str(uuid.uuid4())
+    user_session = UserSession(session_id=session_id)
+    db.session.add(user_session)
+    db.session.commit()
+    
+    return session_id
+
+
+def get_user_settings():
+    """Hämtar användarens inställningar (postnummer, butik)"""
+    session_id = request.cookies.get('matplanerare_session')
+    if session_id:
+        user_session = UserSession.query.filter_by(session_id=session_id).first()
+        if user_session:
+            return {
+                'postal_code': user_session.postal_code,
+                'preferred_store': user_session.preferred_store
+            }
+    return {'postal_code': None, 'preferred_store': None}
+
+
 @app.route('/')
 def index():
     """Startsida"""
-    return render_template('index.html', stores=STORES)
+    session_id = get_or_create_session()
+    settings = get_user_settings()
+    
+    response = make_response(render_template('index.html', stores=STORES, user_settings=settings))
+    # Sätt cookie som varar 1 år
+    response.set_cookie('matplanerare_session', session_id, max_age=31536000, httponly=True, samesite='Lax')
+    return response
 
 
 @app.route('/meals')
 def meals_overview():
     """Översiktssida för måltidsplanering - välj en inköpslista"""
-    lists = ShoppingList.query.order_by(ShoppingList.created_at.desc()).all()
-    return render_template('meals_overview.html', lists=lists)
+    session_id = get_or_create_session()
+    lists = ShoppingList.query.filter_by(session_id=session_id).order_by(ShoppingList.created_at.desc()).all()
+    
+    response = make_response(render_template('meals_overview.html', lists=lists))
+    response.set_cookie('matplanerare_session', session_id, max_age=31536000, httponly=True, samesite='Lax')
+    return response
 
 
 @app.route('/plan')
 def nutrition_plan():
     """Sida för att skapa/redigera näringsplan"""
-    plans = NutritionPlan.query.all()
-    return render_template('plan.html', plans=plans, allergens=ALLERGENS, rdi_values=RDI_VALUES)
+    session_id = get_or_create_session()
+    plans = NutritionPlan.query.filter_by(session_id=session_id).all()
+    
+    response = make_response(render_template('plan.html', plans=plans, allergens=ALLERGENS, rdi_values=RDI_VALUES))
+    response.set_cookie('matplanerare_session', session_id, max_age=31536000, httponly=True, samesite='Lax')
+    return response
 
 
 @app.route('/api/plans', methods=['GET', 'POST'])
 def api_plans():
     """API för näringsplaner"""
+    session_id = get_or_create_session()
+    
     if request.method == 'POST':
         data = request.json
         
@@ -64,6 +116,7 @@ def api_plans():
             allergies = ','.join(allergies)
         
         plan = NutritionPlan(
+            session_id=session_id,
             name=data.get('name', 'Min plan'),
             allergies=allergies,
             # Makronäringsämnen
@@ -101,14 +154,15 @@ def api_plans():
         db.session.commit()
         return jsonify(plan.to_dict()), 201
     
-    plans = NutritionPlan.query.all()
+    plans = NutritionPlan.query.filter_by(session_id=session_id).all()
     return jsonify([p.to_dict() for p in plans])
 
 
 @app.route('/api/plans/<int:plan_id>', methods=['GET', 'PUT', 'DELETE'])
 def api_plan(plan_id):
     """API för enskild näringsplan"""
-    plan = NutritionPlan.query.get_or_404(plan_id)
+    session_id = get_or_create_session()
+    plan = NutritionPlan.query.filter_by(id=plan_id, session_id=session_id).first_or_404()
     
     if request.method == 'DELETE':
         db.session.delete(plan)
@@ -155,6 +209,30 @@ def api_rdi():
     return jsonify(RDI_VALUES)
 
 
+@app.route('/api/user-settings', methods=['GET', 'PUT'])
+def api_user_settings():
+    """API för användarinställningar (postnummer, butik)"""
+    session_id = get_or_create_session()
+    user_session = UserSession.query.filter_by(session_id=session_id).first()
+    
+    if not user_session:
+        user_session = UserSession(session_id=session_id)
+        db.session.add(user_session)
+        db.session.commit()
+    
+    if request.method == 'PUT':
+        data = request.json
+        
+        if 'postal_code' in data:
+            user_session.postal_code = data['postal_code']
+        if 'preferred_store' in data:
+            user_session.preferred_store = data['preferred_store']
+        
+        db.session.commit()
+    
+    return jsonify(user_session.to_dict())
+
+
 @app.route('/search')
 def search_page():
     """Söksida för produkter"""
@@ -170,7 +248,11 @@ def api_search():
     if not query:
         return jsonify([])
     
-    products = scraper.search_products(query, limit=limit)
+    # Hämta postnummer från användarinställningar
+    settings = get_user_settings()
+    postal_code = settings.get('postal_code')
+    
+    products = scraper.search_products(query, limit=limit, postal_code=postal_code)
     return jsonify(products)
 
 
@@ -225,18 +307,26 @@ def api_products():
 @app.route('/shopping-list')
 def shopping_list_page():
     """Sida för inköpslistor"""
-    lists = ShoppingList.query.order_by(ShoppingList.created_at.desc()).all()
-    plans = NutritionPlan.query.all()
-    return render_template('shopping_list.html', lists=lists, plans=plans, stores=STORES)
+    session_id = get_or_create_session()
+    lists = ShoppingList.query.filter_by(session_id=session_id).order_by(ShoppingList.created_at.desc()).all()
+    plans = NutritionPlan.query.filter_by(session_id=session_id).all()
+    settings = get_user_settings()
+    
+    response = make_response(render_template('shopping_list.html', lists=lists, plans=plans, stores=STORES, user_settings=settings))
+    response.set_cookie('matplanerare_session', session_id, max_age=31536000, httponly=True, samesite='Lax')
+    return response
 
 
 @app.route('/api/shopping-lists', methods=['GET', 'POST'])
 def api_shopping_lists():
     """API för inköpslistor"""
+    session_id = get_or_create_session()
+    
     if request.method == 'POST':
         data = request.json
         
         shopping_list = ShoppingList(
+            session_id=session_id,
             name=data.get('name', 'Min inköpslista'),
             store=data.get('store'),
             days=data.get('days', 7),
@@ -247,7 +337,7 @@ def api_shopping_lists():
         
         return jsonify(shopping_list.to_dict()), 201
     
-    lists = ShoppingList.query.order_by(ShoppingList.created_at.desc()).all()
+    lists = ShoppingList.query.filter_by(session_id=session_id).order_by(ShoppingList.created_at.desc()).all()
     return jsonify([l.to_dict() for l in lists])
 
 
@@ -309,7 +399,8 @@ def get_emoji_for_product(product):
 @app.route('/shopping-list/<int:list_id>/view')
 def shopping_list_view(list_id):
     """Förenklad butiksvy för inköpslistan"""
-    shopping_list = ShoppingList.query.get_or_404(list_id)
+    session_id = get_or_create_session()
+    shopping_list = ShoppingList.query.filter_by(id=list_id, session_id=session_id).first_or_404()
     
     # Gruppera produkter efter kategori
     categories = {}
@@ -339,16 +430,19 @@ def shopping_list_view(list_id):
             'emoji': get_emoji_for_product(item.product)
         })
     
-    return render_template('shopping_view.html', 
+    response = make_response(render_template('shopping_view.html', 
                          shopping_list=shopping_list, 
                          categories=categories,
-                         get_emoji=get_emoji_for_product)
+                         get_emoji=get_emoji_for_product))
+    response.set_cookie('matplanerare_session', session_id, max_age=31536000, httponly=True, samesite='Lax')
+    return response
 
 
 @app.route('/shopping-list/<int:list_id>/meals')
 def meal_plan_view(list_id):
     """Måltidsplan baserad på inköpslistan"""
-    shopping_list = ShoppingList.query.get_or_404(list_id)
+    session_id = get_or_create_session()
+    shopping_list = ShoppingList.query.filter_by(id=list_id, session_id=session_id).first_or_404()
     plan = NutritionPlan.query.get(shopping_list.plan_id) if shopping_list.plan_id else None
     
     # Hämta AI-recept om de finns
@@ -378,7 +472,8 @@ def meal_plan_view(list_id):
 @app.route('/api/shopping-lists/<int:list_id>', methods=['GET', 'PUT', 'DELETE'])
 def api_shopping_list(list_id):
     """API för enskild inköpslista"""
-    shopping_list = ShoppingList.query.get_or_404(list_id)
+    session_id = get_or_create_session()
+    shopping_list = ShoppingList.query.filter_by(id=list_id, session_id=session_id).first_or_404()
     
     if request.method == 'DELETE':
         db.session.delete(shopping_list)
@@ -397,7 +492,8 @@ def api_shopping_list(list_id):
 @app.route('/api/shopping-lists/<int:list_id>/items', methods=['POST'])
 def api_add_shopping_item(list_id):
     """Lägg till produkt i inköpslista"""
-    shopping_list = ShoppingList.query.get_or_404(list_id)
+    session_id = get_or_create_session()
+    shopping_list = ShoppingList.query.filter_by(id=list_id, session_id=session_id).first_or_404()
     data = request.json
     
     # Kolla om produkten redan finns i databasen, annars skapa
@@ -487,7 +583,9 @@ def _update_list_total(shopping_list):
 @app.route('/generate')
 def generate_page():
     """Sida för att generera inköpslista från näringsplan"""
-    plans = NutritionPlan.query.all()
+    session_id = get_or_create_session()
+    plans = NutritionPlan.query.filter_by(session_id=session_id).all()
+    settings = get_user_settings()
     
     # Kolla om AI-tjänsten är tillgänglig
     ai_available = False
@@ -497,7 +595,9 @@ def generate_page():
     except:
         pass
     
-    return render_template('generate.html', plans=plans, stores=STORES, allergens=ALLERGENS, ai_available=ai_available)
+    response = make_response(render_template('generate.html', plans=plans, stores=STORES, allergens=ALLERGENS, ai_available=ai_available, user_settings=settings))
+    response.set_cookie('matplanerare_session', session_id, max_age=31536000, httponly=True, samesite='Lax')
+    return response
 
 
 @app.route('/api/generate-list', methods=['POST'])
@@ -534,7 +634,8 @@ def api_generate_list():
     include_snacks = data.get('include_snacks', False)
     use_ai_recipes = data.get('use_ai_recipes', False)
     
-    plan = NutritionPlan.query.get_or_404(plan_id)
+    session_id = get_or_create_session()
+    plan = NutritionPlan.query.filter_by(id=plan_id, session_id=session_id).first_or_404()
     
     # Hämta allergier från plan
     allergies = plan.get_allergies_list()
@@ -551,7 +652,8 @@ def api_generate_list():
             include_lunch=include_lunch,
             include_dinner=include_dinner,
             include_snacks=include_snacks,
-            allergies=allergies
+            allergies=allergies,
+            session_id=session_id
         )
     
     # ============== BERÄKNA TOTALT NÄRINGSBEHOV ==============
@@ -726,6 +828,7 @@ def api_generate_list():
     
     # Skapa ny inköpslista
     shopping_list = ShoppingList(
+        session_id=session_id,
         name=f"Inköpslista - {plan.name} ({days} dagar, {household_size} pers)",
         store=store,
         days=days,
@@ -1405,7 +1508,8 @@ def export_shopping_list_csv(list_id):
     Exportera inköpslista som CSV
     Kan öppnas i Excel eller importeras till andra system
     """
-    shopping_list = ShoppingList.query.get_or_404(list_id)
+    session_id = get_or_create_session()
+    shopping_list = ShoppingList.query.filter_by(id=list_id, session_id=session_id).first_or_404()
     
     output = io.StringIO()
     writer = csv.writer(output, delimiter=';')
@@ -1629,7 +1733,7 @@ def export_for_store(list_id, store):
 # ============== AI RECEPTGENERERING ==============
 def generate_with_ai_recipes(plan, days, store, household_size, budget, 
                              include_breakfast, include_lunch, include_dinner, 
-                             include_snacks, allergies):
+                             include_snacks, allergies, session_id=None):
     """
     Generera inköpslista baserat på AI-genererade recept
     
@@ -1684,6 +1788,7 @@ def generate_with_ai_recipes(plan, days, store, household_size, budget,
         
         # Skapa inköpslista
         shopping_list = ShoppingList(
+            session_id=session_id,
             name=f"AI-recept - {plan.name} ({days} dagar)",
             store=store,
             days=days,
@@ -1702,6 +1807,7 @@ def generate_with_ai_recipes(plan, days, store, household_size, budget,
                 continue
             
             recipe = Recipe(
+                session_id=session_id,
                 shopping_list_id=shopping_list.id,
                 day=recipe_data.get('day', 1),
                 meal_type=recipe_data.get('meal_type', 'middag'),

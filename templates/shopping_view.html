@@ -677,12 +677,17 @@
         }
         
         function shareToMessenger() {
-            const text = encodeURIComponent(generateShareText());
-            // Messenger använder Facebook's dialog eller m.me
-            const url = `fb-messenger://share?link=${encodeURIComponent(window.location.href)}&app_id=123456`;
-            
-            // Fallback till webbversion
-            window.open(`https://www.facebook.com/dialog/send?link=${encodeURIComponent(window.location.href)}&redirect_uri=${encodeURIComponent(window.location.href)}`, '_blank');
+            const text = generateShareText();
+            // Kopiera texten och öppna Messenger
+            navigator.clipboard.writeText(text).then(() => {
+                // Visa bekräftelse
+                const toast = document.getElementById('copyToast');
+                toast.textContent = '✓ Texten kopierad! Klistra in i Messenger.';
+                toast.classList.add('show');
+                setTimeout(() => toast.classList.remove('show'), 3000);
+                // Öppna Messenger
+                window.open('https://www.messenger.com/', '_blank');
+            });
             closeShareMenu();
         }
         

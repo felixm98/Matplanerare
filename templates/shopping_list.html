@@ -424,8 +424,12 @@ async function shareList(platform) {
     
     switch(platform) {
         case 'messenger':
-            // Facebook Messenger
-            window.open(`https://www.facebook.com/dialog/send?link=${encodeURIComponent(window.location.href)}&redirect_uri=${encodeURIComponent(window.location.href)}`, '_blank');
+            // Facebook Messenger - öppna med texten
+            // Messenger stödjer inte direkt text, så vi använder m.me med share
+            // Bästa lösningen är att kopiera texten och informera användaren
+            await navigator.clipboard.writeText(text);
+            showToast('Texten kopierad! Klistra in i Messenger.', 'success');
+            window.open('https://www.messenger.com/', '_blank');
             break;
         case 'whatsapp':
             window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');

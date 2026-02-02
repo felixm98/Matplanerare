@@ -184,10 +184,68 @@
                             <i class="bi bi-calendar-week me-1"></i>Måltidsplan
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" data-bs-toggle="modal" data-bs-target="#settingsModal" title="Inställningar">
+                            <i class="bi bi-gear me-1"></i><span class="d-lg-none">Inställningar</span>
+                        </a>
+                    </li>
                 </ul>
             </div>
         </div>
     </nav>
+
+    <!-- Inställningsmodal -->
+    <div class="modal fade" id="settingsModal" tabindex="-1" aria-labelledby="settingsModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title" id="settingsModalLabel">
+                        <i class="bi bi-gear me-2"></i>Inställningar
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Stäng"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="settingsForm">
+                        <div class="mb-3">
+                            <label for="postalCode" class="form-label">
+                                <i class="bi bi-geo-alt me-1"></i>Postnummer
+                            </label>
+                            <input type="text" class="form-control" id="postalCode" 
+                                   pattern="[0-9]{5}" maxlength="5"
+                                   placeholder="12345">
+                            <div class="form-text">Ange ditt postnummer för att se lokala priser</div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="preferredStore" class="form-label">
+                                <i class="bi bi-shop me-1"></i>Favoritbutik
+                            </label>
+                            <select class="form-select" id="preferredStore">
+                                <option value="">Välj butik...</option>
+                                <option value="ICA">ICA</option>
+                                <option value="Coop">Coop</option>
+                                <option value="Willys">Willys</option>
+                                <option value="Hemköp">Hemköp</option>
+                                <option value="Lidl">Lidl</option>
+                                <option value="City Gross">City Gross</option>
+                            </select>
+                            <div class="form-text">Din favoritbutik visas först vid prisjämförelser</div>
+                        </div>
+                    </form>
+                    
+                    <div class="alert alert-info small mb-0 mt-3">
+                        <i class="bi bi-info-circle me-1"></i>
+                        <strong>Dina inställningar sparas automatiskt</strong> och är kopplade till denna enhet/webbläsare.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Stäng</button>
+                    <button type="button" class="btn btn-success" onclick="saveSettings()">
+                        <i class="bi bi-check-lg me-1"></i>Spara
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <main>
         {% block content %}{% endblock %}
@@ -201,6 +259,96 @@
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Ladda användarinställningar när sidan laddas
+        document.addEventListener('DOMContentLoaded', function() {
+            loadUserSettings();
+        });
+        
+        // Ladda inställningar när modalen öppnas
+        document.getElementById('settingsModal')?.addEventListener('show.bs.modal', function() {
+            loadUserSettings();
+        });
+        
+        async function loadUserSettings() {
+            try {
+                const response = await fetch('/api/user-settings');
+                if (response.ok) {
+                    const settings = await response.json();
+                    if (settings.postal_code) {
+                        document.getElementById('postalCode').value = settings.postal_code;
+                    }
+                    if (settings.preferred_store) {
+                        document.getElementById('preferredStore').value = settings.preferred_store;
+                    }
+                }
+            } catch (e) {
+                console.log('Kunde inte ladda inställningar:', e);
+            }
+        }
+        
+        async function saveSettings() {
+            const postalCode = document.getElementById('postalCode').value.trim();
+            const preferredStore = document.getElementById('preferredStore').value;
+            
+            // Validera postnummer
+            if (postalCode && !/^\d{5}$/.test(postalCode)) {
+                alert('Postnummer måste vara 5 siffror (t.ex. 12345)');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/user-settings', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        postal_code: postalCode || null,
+                        preferred_store: preferredStore || null
+                    })
+                });
+                
+                if (response.ok) {
+                    // Stäng modalen
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('settingsModal'));
+                    modal.hide();
+                    
+                    // Visa bekräftelse
+                    showToast('Inställningar sparade!', 'success');
+                } else {
+                    throw new Error('Kunde inte spara');
+                }
+            } catch (e) {
+                alert('Kunde inte spara inställningar. Försök igen.');
+            }
+        }
+        
+        function showToast(message, type = 'info') {
+            // Skapa toast-element om det inte finns
+            let toastContainer = document.getElementById('toastContainer');
+            if (!toastContainer) {
+                toastContainer = document.createElement('div');
+                toastContainer.id = 'toastContainer';
+                toastContainer.className = 'toast-container position-fixed bottom-0 end-0 p-3';
+                toastContainer.style.zIndex = '9999';
+                document.body.appendChild(toastContainer);
+            }
+            
+            const toastId = 'toast_' + Date.now();
+            const bgClass = type === 'success' ? 'bg-success' : (type === 'error' ? 'bg-danger' : 'bg-info');
+            
+            toastContainer.innerHTML = `
+                <div id="${toastId}" class="toast ${bgClass} text-white" role="alert">
+                    <div class="toast-body d-flex align-items-center">
+                        <i class="bi bi-${type === 'success' ? 'check-circle' : 'info-circle'} me-2"></i>
+                        ${message}
+                    </div>
+                </div>
+            `;
+            
+            const toast = new bootstrap.Toast(document.getElementById(toastId), { delay: 3000 });
+            toast.show();
+        }
+    </script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>
